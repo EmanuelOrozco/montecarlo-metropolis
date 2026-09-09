@@ -9,12 +9,21 @@ __pycache__/
 .eggs/
 dist/
 build/
+*.egg
+
+# Frames temporales de video (se regeneran al ejecutar)
+**/_frames_tmp/
+**/_frames_mcs_tmp/
+**/_frames*/
 
 # Herramientas
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
+htmlcov/
+.tox/
+.cache/
 
 # Sistema / editor
 .DS_Store
@@ -22,3 +31,9 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+*~
+*.bak
+
+# Logs / previews locales
+*.log
+**/_preview_*.png
