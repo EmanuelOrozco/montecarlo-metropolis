@@ -98,10 +98,8 @@ class Ising2D:
         neighbor_sum = self._suma_vecinos(i, j)
         dE = 2 * (self.J * neighbor_sum + self.h) * old_spin_value
 
-        w = np.exp(-self.beta * dE)
-        r = random.random()
-
-        if dE < 0 or r < w:
+        # Evita overflow de exp a T muy baja: si dE <= 0 se acepta siempre.
+        if dE <= 0 or random.random() < np.exp(-self.beta * dE):
             self.spins[i, j] = -old_spin_value
             self.E = self.E + dE
             self.m = self.m - 2 * old_spin_value
