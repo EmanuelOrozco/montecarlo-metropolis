@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import numpy as np
+
 from .analisis_temperatura import _malla_temperaturas, barrido_temperatura
+from .comparacion_tc import ejecutar_comparacion_tamano
 from .config import (
     CASOS,
     H,
     KB,
     L,
     MCS,
+    MCS_TERMALIZACION,
     N_TEMPERATURAS,
     SEED,
     T,
@@ -24,6 +28,7 @@ from .visualizacion import (
     crear_video,
     guardar_instantanea,
     graficar_energia,
+    graficar_energia_vs_t,
     graficar_magnetizacion,
     graficar_magnetizacion_vs_t,
 )
@@ -65,10 +70,13 @@ def ejecutar_temperatura_fija(geometria: str) -> None:
             rutas["redes"] / f"red_{caso['clave']}_final.png",
             geometria=geometria,
         )
-        e_media, m_media = modelo.promedios()
         n = modelo.Nspin
+        n_term = min(MCS_TERMALIZACION, len(modelo.energy_history) - 1)
+        e_prod = float(np.mean(modelo.energy_history[n_term:]) / n)
+        m_prod = float(np.mean(modelo.magnetization_history[n_term:]) / n)
         print(
-            f"  ⟨E/N⟩ = {e_media / n:.4f}   ⟨m/N⟩ = {m_media / n:.4f}   "
+            f"  ⟨E/N⟩ (MCS≥{n_term}) = {e_prod:.4f}   "
+            f"⟨m/N⟩ (MCS≥{n_term}) = {m_prod:.4f}   "
             f"E_final/N = {modelo.E / n:.4f}   m_final/N = {modelo.m / n:.4f}"
         )
         modelos.append((caso["titulo"], modelo))
@@ -142,6 +150,19 @@ def ejecutar_magnetizacion_vs_t(geometria: str) -> None:
     )
     print(f"Gráfica: {ruta_fig}")
 
+    print("Generando gráfica energía vs temperatura...")
+    ruta_e = rutas["graficas"] / "energia_vs_temperatura.png"
+    graficar_energia_vs_t(
+        resultado.temperaturas,
+        resultado.energia,
+        resultado.calor_especifico,
+        resultado.tc_estimada,
+        resultado.tc_teorica,
+        ruta_e,
+        titulo_extra=etiqueta,
+    )
+    print(f"Gráfica: {ruta_e}")
+
     idx = resultado.indice_tc
     guardar_instantanea(
         resultado.redes_finales[idx],
@@ -151,9 +172,16 @@ def ejecutar_magnetizacion_vs_t(geometria: str) -> None:
     )
 
     print(
-        f"\nTc teórica ({geometria}) ≈ {resultado.tc_teorica:.4f}\n"
+        f"\nPromedio de producción: MCS ≥ {resultado.mcs_termalizacion}\n"
+        f"Tc teórica ({geometria}) ≈ {resultado.tc_teorica:.4f}\n"
         f"Tc estimada (máx. χ) ≈ {resultado.tc_estimada:.4f}\n"
         f"Puntos de T: {len(resultado.temperaturas)}\n"
         f"Video: {video}\n"
         f"Listo → {rutas['base']}"
     )
+
+
+def ejecutar_tc_vs_tamano(geometria: str) -> None:
+    """Barrido L=2,4,…,L_MAX: Tc(L) vs Tc teórica, parada al 2 % de error."""
+    print(f"{etiqueta_red(geometria)}")
+    ejecutar_comparacion_tamano(geometria)

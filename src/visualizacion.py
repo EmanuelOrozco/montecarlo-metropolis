@@ -10,7 +10,7 @@ from matplotlib.animation import FFMpegWriter, FuncAnimation, PillowWriter
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
 
-from .config import COLOR_ABAJO, COLOR_ARRIBA
+from .config import COLOR_ABAJO, COLOR_ARRIBA, MCS_TERMALIZACION
 from .ising import IsingBase
 
 
@@ -58,12 +58,15 @@ def paso_estabilizacion(valores: np.ndarray, ventana: int = 25) -> int:
     return int(np.clip(estable, 0, n - 1))
 
 
-def ventana_hasta_equilibrio(series: list[np.ndarray]) -> int:
-    """Corta el eje X tras ver el transitorio y un tramo claro de meseta."""
+def ventana_hasta_equilibrio(
+    series: list[np.ndarray],
+    mcs_promedio: int = MCS_TERMALIZACION,
+) -> int:
+    """Corta el eje X tras ver el transitorio, el corte de 200 MCS y un tramo de meseta."""
     n = min(len(s) for s in series)
     t_eq = max(paso_estabilizacion(s[:n]) for s in series)
     extra = max(60, int(0.8 * t_eq))
-    return int(min(n - 1, max(t_eq + extra, 80)))
+    return int(min(n - 1, max(t_eq + extra, mcs_promedio + 80, 80)))
 
 
 def _graficar_series(
@@ -72,8 +75,9 @@ def _graficar_series(
     ruta: Path,
     ylabel: str,
     titulo: str,
+    mcs_promedio: int = MCS_TERMALIZACION,
 ) -> None:
-    xmax = ventana_hasta_equilibrio(historias)
+    xmax = ventana_hasta_equilibrio(historias, mcs_promedio=mcs_promedio)
     fig, ax = plt.subplots(figsize=(10, 5.5))
 
     t_eq_max = 0
@@ -85,6 +89,26 @@ def _graficar_series(
         if 0 < t_eq <= xmax:
             ax.plot(t_eq, y[t_eq], "o", color=linea.get_color(), ms=6, zorder=5)
             ax.axvline(t_eq, color=linea.get_color(), ls="--", lw=0.9, alpha=0.45)
+        if len(y) > mcs_promedio:
+            mu = float(np.mean(y[mcs_promedio : xmax + 1]))
+            ax.hlines(
+                mu,
+                mcs_promedio,
+                xmax,
+                colors=linea.get_color(),
+                linestyles=":",
+                lw=1.15,
+                alpha=0.85,
+            )
+
+    if 0 < mcs_promedio <= xmax:
+        ax.axvline(
+            mcs_promedio,
+            color="0.25",
+            ls="-.",
+            lw=1.3,
+            label=f"promedio MCS ≥ {mcs_promedio}",
+        )
 
     ax.set_xlim(0, xmax)
     ax.set_xlabel("Pasos de Monte Carlo")
@@ -372,6 +396,44 @@ def graficar_magnetizacion_vs_t(
     ax_chi.set_title("Susceptibilidad (pico ≈ temperatura crítica)")
     ax_chi.legend(loc="upper right", fontsize=9)
     ax_chi.grid(True, alpha=0.35)
+
+    fig.tight_layout()
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(ruta, dpi=160)
+    plt.close(fig)
+
+
+def graficar_energia_vs_t(
+    temperaturas: np.ndarray,
+    energia: np.ndarray,
+    calor_especifico: np.ndarray,
+    tc_estimada: float,
+    tc_teorica: float,
+    ruta: Path,
+    titulo_extra: str = "",
+) -> None:
+    """E/N y calor específico frente a T, con marcas de Tc."""
+    fig, (ax_e, ax_c) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+
+    ax_e.plot(temperaturas, energia, "o-", lw=1.8, ms=5, color="#1F618D", label=r"$\langle E/N\rangle$")
+    ax_e.axvline(tc_teorica, color="#27AE60", ls="--", lw=1.4, label=rf"$T_c$ teórica ≈ {tc_teorica:.3f}")
+    ax_e.axvline(tc_estimada, color="#8E44AD", ls=":", lw=1.6, label=rf"$T_c$ estimada (máx. χ) ≈ {tc_estimada:.3f}")
+    ax_e.set_ylabel(r"Energía  $\langle E/N\rangle$")
+    titulo_e = "Energía en función de la temperatura"
+    if titulo_extra:
+        titulo_e = f"{titulo_e} — {titulo_extra}"
+    ax_e.set_title(titulo_e)
+    ax_e.legend(loc="upper left", fontsize=9)
+    ax_e.grid(True, alpha=0.35)
+
+    ax_c.plot(temperaturas, calor_especifico, "s-", lw=1.6, ms=4.5, color="#D35400", label=r"$C$")
+    ax_c.axvline(tc_teorica, color="#27AE60", ls="--", lw=1.4)
+    ax_c.axvline(tc_estimada, color="#8E44AD", ls=":", lw=1.6)
+    ax_c.set_xlabel(r"Temperatura  $T$")
+    ax_c.set_ylabel(r"Calor específico  $C$")
+    ax_c.set_title(r"Calor específico $C=\mathrm{Var}(E)/(N T^2)$ (pico cerca de $T_c$)")
+    ax_c.legend(loc="upper right", fontsize=9)
+    ax_c.grid(True, alpha=0.35)
 
     fig.tight_layout()
     ruta.parent.mkdir(parents=True, exist_ok=True)

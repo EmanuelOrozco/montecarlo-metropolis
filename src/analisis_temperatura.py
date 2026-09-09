@@ -10,11 +10,11 @@ import numpy as np
 from .config import (
     CASOS,
     CASO_TEMPERATURA,
-    FRACCION_TERMALIZACION,
     H_T,
     KB,
     L,
     MCS_T,
+    MCS_TERMALIZACION,
     N_TEMPERATURAS,
     SEED,
     T_MAX,
@@ -34,11 +34,13 @@ class ResultadoTemperatura:
     magnetizacion: np.ndarray
     energia: np.ndarray
     susceptibilidad: np.ndarray
+    calor_especifico: np.ndarray
     redes_finales: list[np.ndarray]
     tc_estimada: float
     tc_teorica: float
     indice_tc: int
     geometria: str
+    mcs_termalizacion: int
 
 
 def _caso_por_clave(clave: str) -> dict:
@@ -76,6 +78,7 @@ def _malla_temperaturas(
 
 
 def estimar_tc(temperaturas: np.ndarray, susceptibilidad: np.ndarray) -> tuple[float, int]:
+    """Tc numérica: temperatura donde la susceptibilidad χ es máxima."""
     idx = int(np.argmax(susceptibilidad))
     return float(temperaturas[idx]), idx
 
@@ -86,7 +89,7 @@ def barrido_temperatura(
     t_max: float = T_MAX,
     n_temps: int = N_TEMPERATURAS,
     mcs: int = MCS_T,
-    fraccion_term: float = FRACCION_TERMALIZACION,
+    mcs_term: int = MCS_TERMALIZACION,
     clave_caso: str = CASO_TEMPERATURA,
     L_red: int = L,
     h: float = H_T,
@@ -95,18 +98,19 @@ def barrido_temperatura(
 ) -> ResultadoTemperatura:
     caso = _caso_por_clave(clave_caso)
     temps = _malla_temperaturas(t_min, t_max, n_temps, geometria, J=caso["J"])
-    n_term = max(1, int(mcs * fraccion_term))
+    n_term = int(np.clip(mcs_term, 1, max(mcs - 1, 1)))
     tc_teo = tc_teorica(geometria, J=caso["J"], kB=KB)
 
     mags: list[float] = []
     energias: list[float] = []
     chis: list[float] = []
+    ces: list[float] = []
     redes: list[np.ndarray] = []
 
     print(
         f"Barrido T ∈ [{temps[0]:.4g}, {temps[-1]:.4g}]  "
         f"({len(temps)} puntos)  |  MCS={mcs}  |  "
-        f"red={geometria}  |  caso={caso['titulo']}"
+        f"promedio MCS≥{n_term}  |  red={geometria}  |  caso={caso['titulo']}"
     )
 
     for i, T in enumerate(temps):
@@ -126,14 +130,17 @@ def barrido_temperatura(
         e_hist = np.asarray(modelo.energy_history[n_term:], dtype=float)
         nspin = modelo.Nspin
 
+        # Promedios de producción: se descartan los primeros n_term MCS.
         m_media = float(np.mean(np.abs(m_hist)) / nspin)
         e_media = float(np.mean(e_hist) / nspin)
         chi = float((np.mean(m_hist**2) - np.mean(m_hist) ** 2) / (T * nspin))
+        cv = float((np.mean(e_hist**2) - np.mean(e_hist) ** 2) / (T * T * nspin))
         red = modelo.spins.copy()
 
         mags.append(m_media)
         energias.append(e_media)
         chis.append(chi)
+        ces.append(cv)
         redes.append(red)
 
         temps_acum = np.asarray(temps[: i + 1], dtype=float)
@@ -158,9 +165,11 @@ def barrido_temperatura(
         magnetizacion=np.asarray(mags, dtype=float),
         energia=np.asarray(energias, dtype=float),
         susceptibilidad=chi_arr,
+        calor_especifico=np.asarray(ces, dtype=float),
         redes_finales=redes,
         tc_estimada=tc_est,
         tc_teorica=tc_teo,
         indice_tc=idx_tc,
         geometria=geometria,
+        mcs_termalizacion=n_term,
     )

@@ -26,10 +26,21 @@ T_MIN = 0.001
 T_MAX = 5.0
 N_TEMPERATURAS = 55
 MCS_T = 800
-FRACCION_TERMALIZACION = 0.4
+# Se descartan los primeros MCS (termalización) y el promedio se toma del resto.
+MCS_TERMALIZACION = 200
 H_T = 0.0
 CASO_TEMPERATURA = "ferromagnetico"
 VIDEO_T_FPS = 4
+
+# Comparación de Tc vs tamaño de celda (L = 2, 4, …, L_MAX_COMP).
+L_MIN_COMP = 2
+L_MAX_COMP = 30
+L_PASO_COMP = 2
+ERROR_REL_MAX = 0.02
+N_TEMPS_GRUESA = 16
+N_TEMPS_FINA = 11
+# No se corta por error en L muy pequeños: χ es ruidosa y el 2 % sería accidental.
+L_MIN_PARADA = 8
 
 CASOS = (
     {
@@ -94,6 +105,25 @@ def preparar_carpetas(*rutas: Path) -> None:
 
 def preparar_salidas_t_fija(geometria: str) -> dict[str, Path]:
     rutas = rutas_t_fija(geometria)
+    preparar_carpetas(*rutas.values())
+    return rutas
+
+
+def dir_tamano(geometria: str) -> Path:
+    return dir_geometria(geometria) / "tc_vs_tamano"
+
+
+def rutas_tamano(geometria: str) -> dict[str, Path]:
+    base = dir_tamano(geometria)
+    return {
+        "base": base,
+        "graficas": base / "graficas",
+        "tablas": base / "tablas",
+    }
+
+
+def preparar_salidas_tamano(geometria: str) -> dict[str, Path]:
+    rutas = rutas_tamano(geometria)
     preparar_carpetas(*rutas.values())
     return rutas
 

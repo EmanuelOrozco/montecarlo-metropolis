@@ -13,7 +13,11 @@ import matplotlib
 matplotlib.use("Agg")
 
 from src.config import GEOMETRIAS, RESULTADOS, preparar_carpetas
-from src.ejecucion import ejecutar_magnetizacion_vs_t, ejecutar_temperatura_fija
+from src.ejecucion import (
+    ejecutar_magnetizacion_vs_t,
+    ejecutar_tc_vs_tamano,
+    ejecutar_temperatura_fija,
+)
 from src.ising import REDES, etiqueta_red
 
 
@@ -36,12 +40,18 @@ def _menu_interactivo() -> tuple[str, str]:
         "\nAnálisis:\n"
         "  1) Temperatura fija          →  .../temperatura_fija/\n"
         "  2) Magnetización vs T (y Tc) →  .../magnetizacion_vs_t/\n"
-        "  3) Ambos análisis\n"
+        "  3) Comparación Tc vs tamaño  →  .../tc_vs_tamano/\n"
+        "  4) T fija + magnetización vs T\n"
     )
     while True:
-        m = input("Elige el análisis [1/2/3]: ").strip()
-        if m in {"1", "2", "3"}:
-            modo = {"1": "actual", "2": "temperatura", "3": "todo"}[m]
+        m = input("Elige el análisis [1/2/3/4]: ").strip()
+        if m in {"1", "2", "3", "4"}:
+            modo = {
+                "1": "actual",
+                "2": "temperatura",
+                "3": "tamano",
+                "4": "todo",
+            }[m]
             break
         print("Opción no válida.")
 
@@ -60,9 +70,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--modo",
-        choices=("actual", "temperatura", "todo"),
+        choices=("actual", "temperatura", "tamano", "todo"),
         default=None,
-        help="actual = T fija; temperatura = |m|(T); todo = ambos.",
+        help="actual = T fija; temperatura = |m|(T); tamano = Tc vs L; todo = T fija + |m|(T).",
     )
     return parser.parse_args(argv)
 
@@ -85,6 +95,10 @@ def _ejecutar(geometria: str, modo: str) -> None:
     if modo in ("temperatura", "todo"):
         print("\n--- Magnetización vs temperatura ---\n")
         ejecutar_magnetizacion_vs_t(geometria)
+
+    if modo == "tamano":
+        print("\n--- Comparación Tc vs tamaño de celda ---\n")
+        ejecutar_tc_vs_tamano(geometria)
 
 
 def main(argv: list[str] | None = None) -> None:

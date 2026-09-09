@@ -1,15 +1,22 @@
-# Python
+# Entorno
 .venv/
 venv/
 env/
+.env
+.env.*
+
+# Python
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
+*.so
 *.egg-info/
 .eggs/
 dist/
 build/
 *.egg
+.Python
 
 # Frames temporales de video (se regeneran al ejecutar)
 **/_frames_tmp/
@@ -25,7 +32,7 @@ htmlcov/
 .tox/
 .cache/
 
-# Sistema / editor
+# Editor / sistema
 .DS_Store
 Thumbs.db
 .idea/
@@ -33,7 +40,8 @@ Thumbs.db
 *.swp
 *~
 *.bak
+*.orig
 
-# Logs / previews locales
+# Logs y previews locales
 *.log
 **/_preview_*.png
