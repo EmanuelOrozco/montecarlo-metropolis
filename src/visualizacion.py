@@ -11,7 +11,7 @@ from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
 
 from .config import COLOR_ABAJO, COLOR_ARRIBA
-from .ising import Ising2D
+from .ising import IsingBase
 
 
 def _cmap_espines() -> ListedColormap:
@@ -67,7 +67,7 @@ def ventana_hasta_equilibrio(series: list[np.ndarray]) -> int:
 
 
 def _graficar_series(
-    modelos: list[tuple[str, Ising2D]],
+    modelos: list[tuple[str, IsingBase]],
     historias: list[np.ndarray],
     ruta: Path,
     ylabel: str,
@@ -107,45 +107,123 @@ def _graficar_series(
 
 
 def graficar_energia(
-    modelos: list[tuple[str, Ising2D]],
+    modelos: list[tuple[str, IsingBase]],
     ruta: Path,
     MCS: int | None = None,
+    titulo_extra: str = "",
 ) -> None:
     del MCS
     nspin = modelos[0][1].Nspin
     series = _valores_por_espin([m.energy_history for _, m in modelos], nspin)
+    titulo = "Energía por sitio hasta la estabilización"
+    if titulo_extra:
+        titulo = f"{titulo} — {titulo_extra}"
     _graficar_series(
         modelos,
         series,
         ruta,
         ylabel=r"Energía por sitio  $E/N$",
-        titulo="Energía por sitio hasta la estabilización",
+        titulo=titulo,
     )
 
 
 def graficar_magnetizacion(
-    modelos: list[tuple[str, Ising2D]],
+    modelos: list[tuple[str, IsingBase]],
     ruta: Path,
     MCS: int | None = None,
+    titulo_extra: str = "",
 ) -> None:
     del MCS
     nspin = modelos[0][1].Nspin
     series = _valores_por_espin([m.magnetization_history for _, m in modelos], nspin)
+    titulo = "Magnetización por sitio hasta la estabilización"
+    if titulo_extra:
+        titulo = f"{titulo} — {titulo_extra}"
     _graficar_series(
         modelos,
         series,
         ruta,
         ylabel=r"Magnetización por sitio  $m/N$",
-        titulo="Magnetización por sitio hasta la estabilización",
+        titulo=titulo,
     )
 
 
-def guardar_instantanea(spins: np.ndarray, titulo: str, ruta: Path) -> None:
-    fig, ax = plt.subplots(figsize=(5.2, 5.2))
-    ax.imshow(spins, cmap=_cmap_espines(), vmin=-1, vmax=1, interpolation="nearest")
-    ax.set_title(titulo)
+def _coords_triangulares(L: int) -> tuple[np.ndarray, np.ndarray]:
+    i, j = np.indices((L, L))
+    xs = (j + 0.5 * (i % 2)).astype(float).ravel()
+    ys = (i * np.sqrt(3) / 2).astype(float).ravel()
+    return xs, ys
+
+
+def _colores_de_spins(spins: np.ndarray) -> np.ndarray:
+    flat = np.asarray(spins).ravel()
+    return np.where(flat > 0, COLOR_ARRIBA, COLOR_ABAJO)
+
+
+def _tamano_marcador(L: int, panel_ancho: float = 4.0) -> float:
+    return max(12.0, 1800.0 * panel_ancho / (L * L))
+
+
+def _configurar_eje_triangular(ax, L: int) -> None:
+    """Límites y aspecto para que los triángulos se vean equiláteros."""
+    margin = 0.65
+    xmax = (L - 1) + 0.5 + margin
+    ymax = (L - 1) * (np.sqrt(3) / 2) + margin
+    ax.set_xlim(-margin, xmax)
+    ax.set_ylim(ymax, -margin)  # y hacia abajo, sin invert_yaxis extra
+    ax.set_aspect("equal", adjustable="box")
     ax.set_xticks([])
     ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+
+def _dibujar_red(ax, spins: np.ndarray, geometria: str = "cuadrada"):
+    """Dibuja la red y devuelve el artista actualizable (AxesImage o PathCollection)."""
+    if geometria != "triangular":
+        im = ax.imshow(
+            spins,
+            cmap=_cmap_espines(),
+            vmin=-1,
+            vmax=1,
+            interpolation="nearest",
+        )
+        ax.set_xticks([])
+        ax.set_yticks([])
+        return im
+
+    L = spins.shape[0]
+    xs, ys = _coords_triangulares(L)
+    sc = ax.scatter(
+        xs,
+        ys,
+        c=_colores_de_spins(spins),
+        s=_tamano_marcador(L, panel_ancho=5.0),
+        marker="o",
+        edgecolors="0.2",
+        linewidths=0.4,
+        zorder=3,
+    )
+    _configurar_eje_triangular(ax, L)
+    return sc
+
+
+def _actualizar_red(artista, spins: np.ndarray, geometria: str = "cuadrada") -> None:
+    if geometria == "triangular":
+        artista.set_facecolor(_colores_de_spins(spins))
+    else:
+        artista.set_data(spins)
+
+
+def guardar_instantanea(
+    spins: np.ndarray,
+    titulo: str,
+    ruta: Path,
+    geometria: str = "cuadrada",
+) -> None:
+    fig, ax = plt.subplots(figsize=(5.4, 5.4))
+    _dibujar_red(ax, spins, geometria=geometria)
+    ax.set_title(titulo)
     ax.legend(handles=_leyenda_espines(), loc="upper right", fontsize=8, framealpha=0.92)
     fig.tight_layout()
     fig.savefig(ruta, dpi=140)
@@ -153,33 +231,29 @@ def guardar_instantanea(spins: np.ndarray, titulo: str, ruta: Path) -> None:
 
 
 def crear_video(
-    modelos: list[tuple[str, Ising2D]],
+    modelos: list[tuple[str, IsingBase]],
     ruta: Path,
     stride: int,
     fps: int = 20,
+    titulo_extra: str = "",
+    geometria: str = "cuadrada",
 ) -> Path:
-    """Video principal de las tres cuadrículas; limpia frames temporales al terminar."""
+    """Video principal de las tres redes; limpia frames temporales al terminar."""
+    if not geometria:
+        geometria = getattr(modelos[0][1], "geometria", "cuadrada")
+
     n_frames = min(len(m.grid_history) for _, m in modelos)
-    cmap = _cmap_espines()
     carpeta_frames = ruta.parent / "_frames_mcs_tmp"
     carpeta_frames.mkdir(parents=True, exist_ok=True)
     for viejo in carpeta_frames.glob("frame_*.png"):
         viejo.unlink()
 
-    fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.6))
-    imagenes = []
+    fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.8))
+    artistas = []
     for ax, (titulo, modelo) in zip(axes, modelos):
-        im = ax.imshow(
-            modelo.grid_history[0],
-            cmap=cmap,
-            vmin=-1,
-            vmax=1,
-            interpolation="nearest",
-        )
+        art = _dibujar_red(ax, modelo.grid_history[0], geometria=geometria)
         ax.set_title(titulo)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        imagenes.append(im)
+        artistas.append(art)
 
     fig.legend(
         handles=_leyenda_espines(),
@@ -188,16 +262,17 @@ def crear_video(
         frameon=True,
         bbox_to_anchor=(0.5, 0.02),
     )
-    titulo_paso = fig.suptitle("Paso de Monte Carlo: 0", fontsize=13)
+    prefijo = f"{titulo_extra}  |  " if titulo_extra else ""
+    titulo_paso = fig.suptitle(f"{prefijo}Paso de Monte Carlo: 0", fontsize=13)
     fig.tight_layout(rect=[0, 0.08, 1, 0.92])
 
     salida: Path | None = None
     try:
         for frame in range(n_frames):
-            for im, (_, modelo) in zip(imagenes, modelos):
-                im.set_data(modelo.grid_history[frame])
+            for art, (_, modelo) in zip(artistas, modelos):
+                _actualizar_red(art, modelo.grid_history[frame], geometria)
             paso = 0 if frame == 0 else frame * stride
-            titulo_paso.set_text(f"Paso de Monte Carlo: {paso}")
+            titulo_paso.set_text(f"{prefijo}Paso de Monte Carlo: {paso}")
             fig.savefig(carpeta_frames / f"frame_{frame:04d}.png", dpi=100)
 
         salida = _ensamblar_video_desde_frames(carpeta_frames, n_frames, ruta, fps=float(fps))
@@ -206,7 +281,7 @@ def crear_video(
         _limpiar_carpeta_frames(carpeta_frames)
 
     if salida is None:
-        return _crear_video_funcanimation(modelos, ruta, stride, fps)
+        return _crear_video_funcanimation(modelos, ruta, stride, fps, geometria=geometria)
     return salida
 
 
@@ -223,28 +298,19 @@ def _limpiar_carpeta_frames(carpeta: Path) -> None:
 
 
 def _crear_video_funcanimation(
-    modelos: list[tuple[str, Ising2D]],
+    modelos: list[tuple[str, IsingBase]],
     ruta: Path,
     stride: int,
     fps: int,
+    geometria: str = "cuadrada",
 ) -> Path:
     n_frames = min(len(m.grid_history) for _, m in modelos)
-    cmap = _cmap_espines()
-    fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.6))
-    imagenes = []
+    fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.8))
+    artistas = []
     for ax, (titulo, modelo) in zip(axes, modelos):
-        im = ax.imshow(
-            modelo.grid_history[0],
-            cmap=cmap,
-            vmin=-1,
-            vmax=1,
-            interpolation="nearest",
-            animated=True,
-        )
+        art = _dibujar_red(ax, modelo.grid_history[0], geometria=geometria)
         ax.set_title(titulo)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        imagenes.append(im)
+        artistas.append(art)
     fig.legend(
         handles=_leyenda_espines(),
         loc="lower center",
@@ -256,11 +322,11 @@ def _crear_video_funcanimation(
     fig.tight_layout(rect=[0, 0.08, 1, 0.92])
 
     def actualizar(frame: int):
-        for im, (_, modelo) in zip(imagenes, modelos):
-            im.set_data(modelo.grid_history[frame])
+        for art, (_, modelo) in zip(artistas, modelos):
+            _actualizar_red(art, modelo.grid_history[frame], geometria)
         paso = 0 if frame == 0 else frame * stride
         titulo_paso.set_text(f"Paso de Monte Carlo: {paso}")
-        return [*imagenes, titulo_paso]
+        return [*artistas, titulo_paso]
 
     anim = FuncAnimation(fig, actualizar, frames=n_frames, interval=1000 / fps, blit=False)
     ruta.parent.mkdir(parents=True, exist_ok=True)
@@ -281,15 +347,19 @@ def graficar_magnetizacion_vs_t(
     tc_estimada: float,
     tc_teorica: float,
     ruta: Path,
+    titulo_extra: str = "",
 ) -> None:
     """|m|/N y susceptibilidad frente a T, con marcas de Tc."""
     fig, (ax_m, ax_chi) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
     ax_m.plot(temperaturas, magnetizacion, "o-", lw=1.8, ms=5, color="#C0392B", label=r"$\langle |m|/N\rangle$")
-    ax_m.axvline(tc_teorica, color="#27AE60", ls="--", lw=1.4, label=rf"$T_c$ Onsager ≈ {tc_teorica:.3f}")
+    ax_m.axvline(tc_teorica, color="#27AE60", ls="--", lw=1.4, label=rf"$T_c$ teórica ≈ {tc_teorica:.3f}")
     ax_m.axvline(tc_estimada, color="#8E44AD", ls=":", lw=1.6, label=rf"$T_c$ estimada (máx. χ) ≈ {tc_estimada:.3f}")
     ax_m.set_ylabel(r"Magnetización  $\langle |m|/N\rangle$")
-    ax_m.set_title("Magnetización en función de la temperatura")
+    titulo_m = "Magnetización en función de la temperatura"
+    if titulo_extra:
+        titulo_m = f"{titulo_m} — {titulo_extra}"
+    ax_m.set_title(titulo_m)
     ax_m.legend(loc="upper right", fontsize=9)
     ax_m.grid(True, alpha=0.35)
     ax_m.set_ylim(-0.05, 1.05)
@@ -383,6 +453,8 @@ class GrabadorVideoTemperatura:
         n_total: int,
         fps: float = 4.0,
         dpi: int = 100,
+        titulo_extra: str = "",
+        geometria: str = "cuadrada",
     ) -> None:
         self.carpeta_video = carpeta_video
         self.carpeta_frames = carpeta_video / "_frames_tmp"
@@ -392,25 +464,23 @@ class GrabadorVideoTemperatura:
         self.fps = max(float(fps), 0.1)
         self.dpi = dpi
         self.n_frames = 0
+        self.titulo_extra = titulo_extra
+        self.geometria = geometria
 
         self.carpeta_frames.mkdir(parents=True, exist_ok=True)
         for viejo in self.carpeta_frames.glob("frame_*.png"):
             viejo.unlink()
 
-        cmap = _cmap_espines()
-        self.fig = plt.figure(figsize=(12.5, 5.2))
+        self.fig = plt.figure(figsize=(12.5, 5.4))
         self.ax_red = self.fig.add_subplot(1, 2, 1)
         self.ax_cur = self.fig.add_subplot(1, 2, 2)
 
-        self.im = self.ax_red.imshow(
-            np.ones((2, 2)),
-            cmap=cmap,
-            vmin=-1,
-            vmax=1,
-            interpolation="nearest",
+        # Placeholder inicial; se reemplaza en el primer agregar_paso.
+        self.artista_red = _dibujar_red(
+            self.ax_red,
+            np.ones((2, 2), dtype=int),
+            geometria=geometria,
         )
-        self.ax_red.set_xticks([])
-        self.ax_red.set_yticks([])
         self.titulo_red = self.ax_red.set_title("")
 
         (self.linea_hist,) = self.ax_cur.plot(
@@ -425,7 +495,7 @@ class GrabadorVideoTemperatura:
             color="#27AE60",
             ls="--",
             lw=1.3,
-            label=rf"$T_c$ Onsager ≈ {tc_teorica:.3f}",
+            label=rf"$T_c$ teórica ≈ {tc_teorica:.3f}",
         )
         self.linea_tc_est = self.ax_cur.axvline(
             tc_teorica,
@@ -452,8 +522,12 @@ class GrabadorVideoTemperatura:
             fontweight="bold",
             color="#1A5276",
         )
-        self.fig.suptitle("Evolución hacia la temperatura crítica", fontsize=13)
+        subt = "Evolución hacia la temperatura crítica"
+        if titulo_extra:
+            subt = f"{titulo_extra} — {subt}"
+        self.fig.suptitle(subt, fontsize=13)
         self.fig.tight_layout(rect=[0, 0.06, 1, 0.93])
+        self._eje_red_listo = False
 
     def agregar_paso(
         self,
@@ -468,7 +542,14 @@ class GrabadorVideoTemperatura:
         """Guarda solo el frame PNG del paso (sin videos intermedios)."""
         tc_est = float(temps[int(np.argmax(chis))]) if len(chis) else T
 
-        self.im.set_data(red)
+        if not self._eje_red_listo:
+            self.ax_red.clear()
+            self.artista_red = _dibujar_red(self.ax_red, red, geometria=self.geometria)
+            self.titulo_red = self.ax_red.set_title("")
+            self._eje_red_listo = True
+        else:
+            _actualizar_red(self.artista_red, red, self.geometria)
+
         self.titulo_red.set_text(f"Red final\npaso {indice + 1}/{self.n_total}")
         self.linea_hist.set_data(temps, mags)
         self.punto.set_data([T], [m])
@@ -509,6 +590,7 @@ def crear_video_temperatura(
     tc_teorica: float,
     ruta: Path,
     fps: float = 4.0,
+    geometria: str = "cuadrada",
 ) -> Path:
     """Arma solo el video principal a partir del resultado completo."""
     del tc_estimada
@@ -518,6 +600,7 @@ def crear_video_temperatura(
         t_max_vista=float(temperaturas[-1]),
         n_total=len(temperaturas),
         fps=fps,
+        geometria=geometria,
     )
     chis_dummy = np.ones_like(temperaturas)
     for i in range(len(temperaturas)):

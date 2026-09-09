@@ -1,4 +1,4 @@
-"""Punto de entrada: simulación a T fija, barrido en T, o ambos."""
+"""Punto de entrada: elige red (cuadrada/triangular) y modo de análisis."""
 
 from __future__ import annotations
 
@@ -6,200 +6,104 @@ import argparse
 import sys
 from pathlib import Path
 
-# Permite ejecutar `python run_simulation.py` sin instalar el paquete.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import matplotlib
 
 matplotlib.use("Agg")
 
-from src.analisis_temperatura import _malla_temperaturas, barrido_temperatura, tc_onsager
-from src.config import (
-    ANALISIS_VS_T,
-    CASOS,
-    GRAFICAS_T_FIJA,
-    GRAFICAS_VS_T,
-    H,
-    KB,
-    L,
-    MCS,
-    N_TEMPERATURAS,
-    REDES_T_FIJA,
-    REDES_VS_T,
-    RESULTADOS,
-    SEED,
-    SIM_T_FIJA,
-    T,
-    T_MAX,
-    T_MIN,
-    VIDEO_T_FIJA,
-    VIDEO_T_FPS,
-    VIDEO_VS_T,
-    carpetas_t_fija,
-    carpetas_vs_t,
-    preparar_carpetas,
-)
-from src.ising import Ising2D
-from src.visualizacion import (
-    GrabadorVideoTemperatura,
-    crear_video,
-    guardar_instantanea,
-    graficar_energia,
-    graficar_magnetizacion,
-    graficar_magnetizacion_vs_t,
-)
+from src.config import GEOMETRIAS, RESULTADOS, preparar_carpetas
+from src.ejecucion import ejecutar_magnetizacion_vs_t, ejecutar_temperatura_fija
+from src.ising import REDES, etiqueta_red
 
 
-def ejecutar_simulacion_actual() -> None:
-    """Simulación a T fija: tres inicializaciones, gráficas y video MCS."""
-    preparar_carpetas(*carpetas_t_fija())
-    stride_video = max(1, MCS // 250)
-
-    print(f"Cuadrícula {L}×{L}  |  MCS={MCS}  |  T={T}  |  h={H}")
-    print(f"Salida → {SIM_T_FIJA}")
-    print(f"Guardando red cada {stride_video} paso(s) para el video.\n")
-
-    modelos: list[tuple[str, Ising2D]] = []
-    for i, caso in enumerate(CASOS):
-        modelo = Ising2D(
-            L=L,
-            J=caso["J"],
-            h=H,
-            T=T,
-            kB=KB,
-            inicializacion=caso["inicializacion"],
-            seed=SEED + i,
-        )
-        guardar_instantanea(
-            modelo.spins,
-            f"{caso['titulo']} — inicial",
-            REDES_T_FIJA / f"red_{caso['clave']}_inicial.png",
-        )
-        print(f"Simulando: {caso['titulo']}  (J={caso['J']:+.1f}) ...")
-        modelo.simular(MCS, guardar_red_cada=stride_video)
-        guardar_instantanea(
-            modelo.spins,
-            f"{caso['titulo']} — final (MCS={MCS})",
-            REDES_T_FIJA / f"red_{caso['clave']}_final.png",
-        )
-        e_media, m_media = modelo.promedios()
-        n = modelo.Nspin
-        print(
-            f"  ⟨E/N⟩ = {e_media / n:.4f}   ⟨m/N⟩ = {m_media / n:.4f}   "
-            f"E_final/N = {modelo.E / n:.4f}   m_final/N = {modelo.m / n:.4f}"
-        )
-        modelos.append((caso["titulo"], modelo))
-
-    print("\nGenerando gráficas...")
-    graficar_energia(modelos, GRAFICAS_T_FIJA / "energia_vs_mcs.png", MCS)
-    graficar_magnetizacion(modelos, GRAFICAS_T_FIJA / "magnetizacion_vs_mcs.png", MCS)
-
-    print("Generando video de la cuadrícula...")
-    video = crear_video(
-        modelos,
-        VIDEO_T_FIJA / "evolucion_espines.mp4",
-        stride=stride_video,
-        fps=20,
-    )
-    print(f"Video: {video}")
-    print(f"Resultados (T fija) en: {SIM_T_FIJA}")
-
-
-def ejecutar_analisis_temperatura() -> None:
-    """Barrido en T: |m|(T), estimación de Tc y un solo video principal."""
-    preparar_carpetas(*carpetas_vs_t())
-
-    temps_previstas = _malla_temperaturas(T_MIN, T_MAX, N_TEMPERATURAS)
-    grabador = GrabadorVideoTemperatura(
-        carpeta_video=VIDEO_VS_T,
-        tc_teorica=tc_onsager(),
-        t_max_vista=float(temps_previstas[-1]),
-        n_total=len(temps_previstas),
-        fps=VIDEO_T_FPS,
-    )
-
-    def on_paso(i, T_paso, m, _chi, red, temps, mags, chis):
-        grabador.agregar_paso(i, T_paso, m, red, temps, mags, chis)
-
-    print(f"Salida → {ANALISIS_VS_T}")
-    print(f"Video: {VIDEO_T_FPS} fps (1 frame por paso de T).\n")
-    resultado = barrido_temperatura(on_paso=on_paso)
-
-    print("\nEnsamblando video principal...")
-    video = grabador.finalizar(VIDEO_VS_T / "magnetizacion_hasta_tc.mp4")
-
-    print("Generando gráfica magnetización vs temperatura...")
-    ruta_fig = GRAFICAS_VS_T / "magnetizacion_vs_temperatura.png"
-    graficar_magnetizacion_vs_t(
-        resultado.temperaturas,
-        resultado.magnetizacion,
-        resultado.susceptibilidad,
-        resultado.tc_estimada,
-        resultado.tc_teorica,
-        ruta_fig,
-    )
-    print(f"Gráfica: {ruta_fig}")
-
-    idx = resultado.indice_tc
-    guardar_instantanea(
-        resultado.redes_finales[idx],
-        f"Red cerca de Tc ≈ {resultado.tc_estimada:.3f}",
-        REDES_VS_T / "red_cerca_tc.png",
-    )
-
-    print(
-        f"\nTc Onsager (teoría) ≈ {resultado.tc_teorica:.4f}\n"
-        f"Tc estimada (máx. χ) ≈ {resultado.tc_estimada:.4f}\n"
-        f"Puntos de T: {len(resultado.temperaturas)}\n"
-        f"Video: {video}\n"
-        f"Resultados (vs T) en: {ANALISIS_VS_T}"
-    )
-
-
-def _menu_interactivo() -> str:
+def _menu_interactivo() -> tuple[str, str]:
     print(
         "\n=== Modelo de Ising 2D — Monte Carlo Metropolis ===\n"
-        "  1) Simulación a temperatura fija  →  resultados/simulacion_temperatura_fija/\n"
-        "  2) Análisis magnetización vs T    →  resultados/analisis_magnetizacion_vs_t/\n"
-        "  3) Todo el proyecto (1 + 2)\n"
+        "Red:\n"
+        "  1) Cuadrada   (4 vecinos)\n"
+        "  2) Triangular (6 vecinos)\n"
+        "  3) Ambas redes\n"
     )
     while True:
-        opcion = input("Elige una opción [1/2/3]: ").strip()
-        if opcion in {"1", "2", "3"}:
-            return {"1": "actual", "2": "temperatura", "3": "todo"}[opcion]
-        print("Opción no válida. Usa 1, 2 o 3.")
+        r = input("Elige la red [1/2/3]: ").strip()
+        if r in {"1", "2", "3"}:
+            red = {"1": "cuadrada", "2": "triangular", "3": "ambas"}[r]
+            break
+        print("Opción no válida.")
+
+    print(
+        "\nAnálisis:\n"
+        "  1) Temperatura fija          →  .../temperatura_fija/\n"
+        "  2) Magnetización vs T (y Tc) →  .../magnetizacion_vs_t/\n"
+        "  3) Ambos análisis\n"
+    )
+    while True:
+        m = input("Elige el análisis [1/2/3]: ").strip()
+        if m in {"1", "2", "3"}:
+            modo = {"1": "actual", "2": "temperatura", "3": "todo"}[m]
+            break
+        print("Opción no válida.")
+
+    return red, modo
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Simulación Ising 2D: T fija, barrido en T, o ambos.",
+        description="Ising 2D Metropolis: red cuadrada o triangular.",
+    )
+    parser.add_argument(
+        "--red",
+        choices=(*REDES, "ambas"),
+        default=None,
+        help="Geometría de la red (o ambas).",
     )
     parser.add_argument(
         "--modo",
         choices=("actual", "temperatura", "todo"),
         default=None,
-        help=(
-            "actual = simulación a T fija; "
-            "temperatura = |m|(T) y Tc; "
-            "todo = ambos"
-        ),
+        help="actual = T fija; temperatura = |m|(T); todo = ambos.",
     )
     return parser.parse_args(argv)
 
 
+def _geometrias(red: str) -> tuple[str, ...]:
+    if red == "ambas":
+        return GEOMETRIAS
+    return (red,)
+
+
+def _ejecutar(geometria: str, modo: str) -> None:
+    print(f"\n{'=' * 60}")
+    print(f"  {etiqueta_red(geometria)}")
+    print(f"{'=' * 60}")
+
+    if modo in ("actual", "todo"):
+        print("\n--- Temperatura fija ---\n")
+        ejecutar_temperatura_fija(geometria)
+
+    if modo in ("temperatura", "todo"):
+        print("\n--- Magnetización vs temperatura ---\n")
+        ejecutar_magnetizacion_vs_t(geometria)
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    modo = args.modo if args.modo is not None else _menu_interactivo()
+    if args.red is None or args.modo is None:
+        red, modo = _menu_interactivo()
+        if args.red is not None:
+            red = args.red
+        if args.modo is not None:
+            modo = args.modo
+    else:
+        red, modo = args.red, args.modo
 
     preparar_carpetas(RESULTADOS)
 
-    if modo in ("actual", "todo"):
-        print("\n--- 1) Simulación a temperatura fija ---\n")
-        ejecutar_simulacion_actual()
+    for geometria in _geometrias(red):
+        _ejecutar(geometria, modo)
 
-    if modo in ("temperatura", "todo"):
-        print("\n--- 2) Análisis magnetización vs temperatura ---\n")
-        ejecutar_analisis_temperatura()
+    print(f"\nResultados en: {RESULTADOS}")
 
 
 if __name__ == "__main__":

@@ -1,1 +1,1 @@
-"""Simulación de Ising 2D con el algoritmo de Metropolis."""
+"""Simulación de Ising 2D (redes cuadrada y triangular) con Metropolis."""

@@ -1,9 +1,4 @@
-"""Barrido de temperatura: magnetización |m|(T) y estimación de Tc.
-
-Módulo independiente de la simulación a T fija. Para cada temperatura se
-equilibra el sistema con Metropolis y se promedia |m|/N tras termalizar.
-Opcionalmente notifica cada paso (p. ej. para armar el video por frames).
-"""
+"""Barrido de temperatura: magnetización |m|(T) y estimación de Tc."""
 
 from __future__ import annotations
 
@@ -17,7 +12,6 @@ from .config import (
     CASO_TEMPERATURA,
     FRACCION_TERMALIZACION,
     H_T,
-    J_FERRO,
     KB,
     L,
     MCS_T,
@@ -26,30 +20,25 @@ from .config import (
     T_MAX,
     T_MIN,
 )
-from .ising import Ising2D
+from .ising import crear_ising, tc_teorica
 
-# Callback: (indice, T, |m|/N, χ, red, temps_acum, mags_acum, chis_acum) -> None
 PasoCallback = Callable[
     [int, float, float, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     None,
 ]
 
 
-def tc_onsager(J: float = J_FERRO, kB: float = KB) -> float:
-    """Temperatura crítica exacta de Onsager para Ising 2D (h = 0)."""
-    return 2.0 * J / (kB * np.log(1.0 + np.sqrt(2.0)))
-
-
 @dataclass
 class ResultadoTemperatura:
     temperaturas: np.ndarray
-    magnetizacion: np.ndarray  # ⟨|m|/N⟩
-    energia: np.ndarray  # ⟨E/N⟩
-    susceptibilidad: np.ndarray  # χ ~ (⟨m²⟩ − ⟨m⟩²) / (T N)
+    magnetizacion: np.ndarray
+    energia: np.ndarray
+    susceptibilidad: np.ndarray
     redes_finales: list[np.ndarray]
     tc_estimada: float
     tc_teorica: float
     indice_tc: int
+    geometria: str
 
 
 def _caso_por_clave(clave: str) -> dict:
@@ -59,23 +48,25 @@ def _caso_por_clave(clave: str) -> dict:
     raise KeyError(f"No hay caso con clave {clave!r} en CASOS")
 
 
-def _malla_temperaturas(t_min: float, t_max: float, n: int) -> np.ndarray:
-    """Malla con densidad creciente al subir T, más fina cerca de Tc."""
-    tc = tc_onsager()
+def _malla_temperaturas(
+    t_min: float,
+    t_max: float,
+    n: int,
+    geometria: str,
+    J: float = 1.0,
+) -> np.ndarray:
+    """Malla densificada al subir T y alrededor de la Tc de la geometría."""
+    tc = tc_teorica(geometria, J=J)
     t_min = max(float(t_min), 1e-6)
     n = max(int(n), 12)
 
-    # u^α con α<1 concentra más puntos hacia T altas.
     u = np.linspace(0.0, 1.0, n)
     base = t_min + (t_max - t_min) * (u**0.52)
 
-    # Refuerzo alrededor de Tc y en el régimen desordenado (T ≳ Tc).
     n_crit = max(n // 3, 10)
     n_alto = max(n // 4, 8)
     criticos = np.linspace(tc * 0.7, min(t_max, tc * 1.45), n_crit)
     altos = np.linspace(tc * 1.05, t_max, n_alto)
-
-    # Un par de anclas muy bajas para ver el orden completo.
     bajos = np.geomspace(t_min, max(t_min * 20, 0.2), 5)
 
     temps = np.unique(
@@ -85,12 +76,12 @@ def _malla_temperaturas(t_min: float, t_max: float, n: int) -> np.ndarray:
 
 
 def estimar_tc(temperaturas: np.ndarray, susceptibilidad: np.ndarray) -> tuple[float, int]:
-    """Tc ≈ temperatura donde la susceptibilidad es máxima."""
     idx = int(np.argmax(susceptibilidad))
     return float(temperaturas[idx]), idx
 
 
 def barrido_temperatura(
+    geometria: str = "cuadrada",
     t_min: float = T_MIN,
     t_max: float = T_MAX,
     n_temps: int = N_TEMPERATURAS,
@@ -103,8 +94,9 @@ def barrido_temperatura(
     on_paso: PasoCallback | None = None,
 ) -> ResultadoTemperatura:
     caso = _caso_por_clave(clave_caso)
-    temps = _malla_temperaturas(t_min, t_max, n_temps)
+    temps = _malla_temperaturas(t_min, t_max, n_temps, geometria, J=caso["J"])
     n_term = max(1, int(mcs * fraccion_term))
+    tc_teo = tc_teorica(geometria, J=caso["J"], kB=KB)
 
     mags: list[float] = []
     energias: list[float] = []
@@ -113,12 +105,13 @@ def barrido_temperatura(
 
     print(
         f"Barrido T ∈ [{temps[0]:.4g}, {temps[-1]:.4g}]  "
-        f"({len(temps)} puntos, densos al subir T)  |  MCS={mcs}  |  caso={caso['titulo']}"
+        f"({len(temps)} puntos)  |  MCS={mcs}  |  "
+        f"red={geometria}  |  caso={caso['titulo']}"
     )
-    tc_teo = tc_onsager(J=caso["J"])
 
     for i, T in enumerate(temps):
-        modelo = Ising2D(
+        modelo = crear_ising(
+            geometria,
             L=L_red,
             J=caso["J"],
             h=h,
@@ -131,10 +124,9 @@ def barrido_temperatura(
 
         m_hist = np.asarray(modelo.magnetization_history[n_term:], dtype=float)
         e_hist = np.asarray(modelo.energy_history[n_term:], dtype=float)
-        abs_m = np.abs(m_hist)
         nspin = modelo.Nspin
 
-        m_media = float(np.mean(abs_m) / nspin)
+        m_media = float(np.mean(np.abs(m_hist)) / nspin)
         e_media = float(np.mean(e_hist) / nspin)
         chi = float((np.mean(m_hist**2) - np.mean(m_hist) ** 2) / (T * nspin))
         red = modelo.spins.copy()
@@ -148,7 +140,7 @@ def barrido_temperatura(
         mags_acum = np.asarray(mags, dtype=float)
         chis_acum = np.asarray(chis, dtype=float)
 
-        marca = "  ← cerca de Tc" if abs(T - tc_teo) < 0.15 else ""
+        marca = "  ← cerca de Tc" if abs(T - tc_teo) < 0.2 else ""
         print(
             f"  [{i + 1:02d}/{len(temps)}]  T={T:7.4f}  "
             f"|m|/N={m_media:7.4f}  χ={chi:8.4f}{marca}"
@@ -170,4 +162,5 @@ def barrido_temperatura(
         tc_estimada=tc_est,
         tc_teorica=tc_teo,
         indice_tc=idx_tc,
+        geometria=geometria,
     )
