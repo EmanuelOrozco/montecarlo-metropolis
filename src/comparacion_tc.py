@@ -38,7 +38,8 @@ from .config import (
     l_max_comparacion,
     preparar_salidas_tamano,
 )
-from .ising import etiqueta_red, tc_teorica
+from .ising import dimension_red, etiqueta_red, tc_teorica
+from .ising.topologia_cubica import tabla_vecinos_cubica
 
 _VECINOS_CUADRADA = ((-1, 0), (1, 0), (0, -1), (0, 1))
 _VECINOS_TRIANGULAR = (
@@ -79,6 +80,7 @@ class ResultadoTamano:
 @dataclass(slots=True)
 class ComparacionTc:
     geometria: str
+    dimension: int
     tc_teorica: float
     filas: list[ResultadoTamano] = field(default_factory=list)
     convergida: bool = False
@@ -100,6 +102,8 @@ def tamanos_celda(
 @lru_cache(maxsize=32)
 def tabla_vecinos(geometria: str, L: int) -> np.ndarray:
     """Flyweight: índices de vecinos con PBC, forma (N, z)."""
+    if geometria in {"bcc", "fcc"}:
+        return tabla_vecinos_cubica(geometria, L)
     try:
         offsets = _OFFSETS[geometria]
     except KeyError as exc:
@@ -233,8 +237,7 @@ def estimar_tc_para_L(
     """Tc(L) con búsqueda gruesa y refinamiento alrededor del máximo de χ."""
     tc_teo = tc_teorica(geometria, J=J, kB=KB)
     vecinos = tabla_vecinos(geometria, L)
-    dimension = len(_OFFSETS[geometria][0])
-    nspin = L**dimension
+    nspin = vecinos.shape[0]
     n_term, mcs = _mcs_para_L(L)
     rng = default_rng(seed + 1000 * L)
     spins = np.ones(nspin, dtype=np.int8)
@@ -306,7 +309,12 @@ class ComparadorTamano:
 
     def ejecutar(self) -> ComparacionTc:
         tc_teo = tc_teorica(self.geometria, J=J_FERRO, kB=KB)
-        out = ComparacionTc(geometria=self.geometria, tc_teorica=tc_teo)
+        dimension = dimension_red(self.geometria)
+        out = ComparacionTc(
+            geometria=self.geometria,
+            dimension=dimension,
+            tc_teorica=tc_teo,
+        )
         print(
             f"Comparación Tc vs L  |  {etiqueta_red(self.geometria)}\n"
             f"  L = {self.l_min} … {self.l_max} (paso {self.paso})  |  "
@@ -341,11 +349,23 @@ def guardar_tabla(comp: ComparacionTc, ruta: Path) -> None:
     with ruta.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
         writer.writerow(
-            ["L", "N", "Tc_estimada", "Tc_teorica", "error_relativo", "error_porcentaje", "chi_max"]
+            [
+                "geometria",
+                "dimension",
+                "L",
+                "N",
+                "Tc_estimada",
+                "Tc_referencia",
+                "error_relativo",
+                "error_porcentaje",
+                "chi_max",
+            ]
         )
         for f in comp.filas:
             writer.writerow(
                 [
+                    comp.geometria,
+                    comp.dimension,
                     f.L,
                     f.N,
                     f"{f.tc_estimada:.8f}",
@@ -379,7 +399,13 @@ def graficar_comparacion(comp: ComparacionTc, ruta: Path) -> None:
 
     ax_e.plot(Ls, errs, "s-", color="#C0392B", lw=1.8, ms=6, label=r"error relativo")
     ax_e.axhline(100 * ERROR_REL_MAX, color="#E67E22", ls="-.", lw=1.4, label="umbral 2 %")
-    ax_e.set_xlabel(r"Lado de la celda  $L$  ($N=L\times L$)")
+    sitios_celda = comp.filas[0].N // int(comp.filas[0].L**comp.dimension)
+    potencia = rf"L^{{{comp.dimension}}}"
+    expresion_n = potencia if sitios_celda == 1 else rf"{sitios_celda}{potencia}"
+    ax_e.set_xlabel(
+        rf"Lado de la celda  $L$  ($N={expresion_n}$)"
+    )
+    ax_e.set_xticks(Ls)
     ax_e.set_ylabel(r"Error relativo  $|T_c(L)-T_c|/T_c$  [%]")
     ax_e.legend(loc="best", fontsize=9)
     ax_e.grid(True, alpha=0.35)

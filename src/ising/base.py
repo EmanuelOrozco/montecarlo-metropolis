@@ -15,6 +15,7 @@ class IsingBase(ABC):
 
     geometria: str = "base"
     dimension: int = 2
+    sitios_por_celda: int = 1
     z_vecinos: int = 0
 
     def __init__(
@@ -39,8 +40,13 @@ class IsingBase(ABC):
             raise ValueError("T debe ser mayor que 0")
 
         self.L = L
-        self.forma = (L,) * self.dimension
-        self.Nspin = L**self.dimension
+        forma_celdas = (L,) * self.dimension
+        self.forma = (
+            forma_celdas
+            if self.sitios_por_celda == 1
+            else (*forma_celdas, self.sitios_por_celda)
+        )
+        self.Nspin = L**self.dimension * self.sitios_por_celda
         self.J = J
         self.h = h
         self.T = T

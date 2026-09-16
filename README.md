@@ -1,6 +1,8 @@
 # Modelo de Ising 2D/3D con Monte Carlo Metropolis
 
-Simulación del modelo de Ising en redes **cuadrada 2D**, **triangular 2D** y **cúbica simple 3D** mediante el algoritmo de Metropolis. Cada geometría admite los mismos análisis:
+Simulación del modelo de Ising en redes **cuadrada 2D**, **triangular 2D**,
+**cúbica simple (SC)**, **cúbica centrada en el cuerpo (BCC)** y **cúbica
+centrada en las caras (FCC)** mediante el algoritmo de Metropolis.
 
 1. **Temperatura fija** — tres configuraciones iniciales, gráficas \(E/N\) y \(m/N\) vs MCS, video de la red.
 2. **Magnetización vs temperatura** — barrido de \(T\), estimación de \(T_c\) y video hasta el régimen crítico.
@@ -24,13 +26,15 @@ python run_simulation.py                          # menú interactivo
 python run_simulation.py --red cuadrada --modo actual
 python run_simulation.py --red cubica --modo actual
 python run_simulation.py --red cubica --modo temperatura
+python run_simulation.py --red bcc --modo tamano
+python run_simulation.py --red fcc --modo actual
 python run_simulation.py --red cuadrada --modo tamano
 python run_simulation.py --red todas --modo todo
 ```
 
 | Flag | Valores |
 | --- | --- |
-| `--red` | `cuadrada`, `triangular`, `cubica`, `todas` |
+| `--red` | `cuadrada`, `triangular`, `cubica`, `bcc`, `fcc`, `todas` |
 | `--modo` | `actual` (T fija), `temperatura` (\(\|m\|(T)\)), `tamano` (\(T_c\) vs \(L\)), `todo` |
 
 ## Estructura
@@ -43,7 +47,9 @@ python run_simulation.py --red todas --modo todo
 │   │   ├── base.py            # Metropolis común para dimensión d
 │   │   ├── cuadrada.py        # 2D, 4 vecinos
 │   │   ├── triangular.py      # 2D, 6 vecinos
-│   │   └── cubica.py          # 3D, 6 vecinos
+│   │   ├── cubica.py          # SC: 3D, 6 vecinos
+│   │   ├── cubicas_centradas.py # BCC (z=8) y FCC (z=12)
+│   │   └── topologia_cubica.py  # bases, coordenadas y tablas de vecinos
 │   ├── config.py              # parámetros y rutas
 │   ├── ejecucion.py           # pipelines (T fija y vs T)
 │   ├── analisis_temperatura.py
@@ -58,10 +64,12 @@ python run_simulation.py --red todas --modo todo
     ├── triangular/
     │   ├── temperatura_fija/
     │   └── magnetizacion_vs_t/
-    └── cubica/
-        ├── temperatura_fija/
-        ├── magnetizacion_vs_t/
-        └── tc_vs_tamano/
+    ├── cubica/
+    │   ├── temperatura_fija/
+    │   ├── magnetizacion_vs_t/
+    │   └── tc_vs_tamano/
+    ├── bcc/                   # misma estructura de análisis
+    └── fcc/                   # misma estructura de análisis
 ```
 
 Las salidas se agrupan por geometría y análisis; los barridos de tamaño
@@ -72,9 +80,9 @@ añaden una carpeta `tablas/`.
 - `src/ising/base.py` contiene el algoritmo de Metropolis independiente de la
   dimensión: calcula \(N=L^d\), crea la forma de la red y conserva los
   historiales.
-- Cada geometría implementa únicamente su energía y vecindad. La red cúbica
-  cuenta una vez los enlaces \(+x,+y,+z\) y consulta los seis vecinos
-  \(\pm x,\pm y,\pm z\).
+- Cada geometría implementa únicamente su energía y vecindad. BCC usa una
+  base de 2 sitios por celda y FCC una base de 4; sus tablas periódicas se
+  construyen una vez y se reutilizan.
 - `src/ejecucion.py` orquesta los casos de uso; `src/visualizacion.py` se
   encarga exclusivamente de gráficas y videos.
 - `src/config.py` separa los tamaños 2D (`L`) y 3D (`L_CUBICA`) para controlar
@@ -93,10 +101,12 @@ python -m unittest discover -v
 | Cuadrada (Onsager) | 2D | \(2/\ln(1+\sqrt{2}) \approx 2.269\) |
 | Triangular | 2D | \(4/\ln(3) \approx 3.641\) |
 | Cúbica simple | 3D | \(4.511524\), estimación numérica |
+| BCC | 3D | \(6.3558\), estimación numérica |
+| FCC | 3D | \(9.794\), estimación numérica |
 
-Las dos referencias 2D son exactas. El modelo cúbico simple 3D no tiene una
-solución analítica exacta conocida; por eso se compara con el valor numérico
-aceptado \(k_B T_c/J\approx4.511524\).
+Las dos referencias 2D son exactas. Los modelos 3D no tienen solución
+analítica exacta conocida, por lo que se comparan con valores numéricos
+aceptados.
 
 En la simulación se estima \(T_c\) como la temperatura donde la susceptibilidad \(\chi\) es máxima:
 
@@ -108,7 +118,8 @@ Eso localiza la transición porque \(\chi\) diverge (en el límite termodinámic
 
 En `--modo tamano` se estima \(T_c(L)\) para
 \(L=2,4,\ldots,L_{\max}\) mediante una búsqueda gruesa y refinamiento del
-pico de \(\chi\). El máximo predeterminado es 30 en 2D y 12 en 3D. Se compara
+pico de \(\chi\). El máximo predeterminado es 30 en 2D, 12 en SC y 8 en
+BCC/FCC. Se compara
 con la referencia correspondiente usando
 \(|T_c(L)-T_c|/T_c\), y el barrido se detiene al llegar al 2 % (solo desde
 \(L\ge 8\), para no cortar por ruido en celdas muy pequeñas).
@@ -131,11 +142,12 @@ C = \frac{\mathrm{Var}(E)}{N T^2}
 ## Parámetros
 
 En `src/config.py`: `L`, `L_CUBICA`, `T`, `H`, `MCS`, `SEED`, `T_MIN`,
-`T_MAX`, `T_MAX_CUBICA`, `N_TEMPERATURAS`, `MCS_T`,
+`T_MAX`, `T_MAX_CUBICA`, `T_MAX_BCC`, `T_MAX_FCC`, `N_TEMPERATURAS`, `MCS_T`,
 `MCS_TERMALIZACION`, `L_MAX_COMP`, `L_MAX_COMP_CUBICA` y
 `ERROR_REL_MAX`.
 
 **Rojo** = espín arriba (`+1`); **azul** = espín abajo (`-1`). Las
-instantáneas triangulares usan offset hexagonal. En la red cúbica, las
-imágenes y videos representan los \(L^3\) sitios en ejes \(x,y,z\), con
-transparencia y rotación gradual de cámara para observar el interior.
+instantáneas triangulares usan offset hexagonal. Las redes cúbicas representan
+todos sus sitios en ejes \(x,y,z\), con transparencia y rotación gradual de
+cámara. Para \(L^3\) celdas: SC tiene \(N=L^3\), BCC \(N=2L^3\) y FCC
+\(N=4L^3\).

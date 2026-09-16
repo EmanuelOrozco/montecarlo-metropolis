@@ -22,7 +22,7 @@ from .config import (
     preparar_salidas_vs_t,
     t_max_geometria,
 )
-from .ising import crear_ising, etiqueta_red, tc_teorica
+from .ising import crear_ising, dimension_red, etiqueta_red, tc_teorica
 from .visualizacion import (
     GrabadorVideoTemperatura,
     crear_video,
@@ -40,7 +40,7 @@ def ejecutar_temperatura_fija(geometria: str) -> None:
     stride_video = max(1, MCS // 250)
     etiqueta = etiqueta_red(geometria)
     lado = lado_geometria(geometria)
-    forma = "×".join([str(lado)] * (3 if geometria == "cubica" else 2))
+    forma = "×".join([str(lado)] * dimension_red(geometria))
 
     print(f"{etiqueta}  |  {forma}  |  MCS={MCS}  |  T={T}  |  h={H}")
     print(f"Salida → {rutas['base']}")

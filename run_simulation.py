@@ -28,16 +28,20 @@ def _menu_interactivo() -> tuple[str, str]:
         "  1) Cuadrada      (2D, 4 vecinos)\n"
         "  2) Triangular    (2D, 6 vecinos)\n"
         "  3) Cúbica simple (3D, 6 vecinos)\n"
-        "  4) Todas las redes\n"
+        "  4) Cúbica BCC    (3D, 8 vecinos)\n"
+        "  5) Cúbica FCC    (3D, 12 vecinos)\n"
+        "  6) Todas las redes\n"
     )
     while True:
-        r = input("Elige la red [1/2/3/4]: ").strip()
-        if r in {"1", "2", "3", "4"}:
+        r = input("Elige la red [1/2/3/4/5/6]: ").strip()
+        if r in {"1", "2", "3", "4", "5", "6"}:
             red = {
                 "1": "cuadrada",
                 "2": "triangular",
                 "3": "cubica",
-                "4": "todas",
+                "4": "bcc",
+                "5": "fcc",
+                "6": "todas",
             }[r]
             break
         print("Opción no válida.")
@@ -66,13 +70,13 @@ def _menu_interactivo() -> tuple[str, str]:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Ising Metropolis: redes cuadrada, triangular o cúbica simple.",
+        description="Ising Metropolis en redes 2D y cúbicas 3D (SC/BCC/FCC).",
     )
     parser.add_argument(
         "--red",
         choices=(*REDES, "ambas", "todas"),
         default=None,
-        help="Geometría de la red (o ambas).",
+        help="Geometría de la red o todas.",
     )
     parser.add_argument(
         "--modo",

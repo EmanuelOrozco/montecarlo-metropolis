@@ -13,12 +13,14 @@ from matplotlib.patches import Patch
 from .config import (
     COLOR_ABAJO,
     COLOR_ARRIBA,
+    GEOMETRIAS_3D,
     MCS_TERMALIZACION,
     ROTACION_3D_POR_FRAME,
     VISTA_3D_AZIMUT,
     VISTA_3D_ELEVACION,
 )
 from .ising import IsingBase
+from .ising.topologia_cubica import coordenadas_cubicas, especificacion_cubica
 
 
 def _cmap_espines() -> ListedColormap:
@@ -195,11 +197,6 @@ def _tamano_marcador(L: int, panel_ancho: float = 4.0) -> float:
     return max(12.0, 1800.0 * panel_ancho / (L * L))
 
 
-def _coords_cubicas(L: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    x, y, z = np.indices((L, L, L))
-    return x.ravel(), y.ravel(), z.ravel()
-
-
 def _configurar_eje_cubico(ax, L: int, azimut: float = VISTA_3D_AZIMUT) -> None:
     """Configura una cámara isométrica y escalas iguales para la red 3D."""
     limite = (-0.6, L - 0.4)
@@ -223,7 +220,7 @@ def _crear_paneles_red(
     figsize: tuple[float, float],
 ):
     """Crea ejes 2D o 3D sin contaminar el pipeline de simulación."""
-    if geometria == "cubica":
+    if geometria in GEOMETRIAS_3D:
         fig = plt.figure(figsize=figsize)
         axes = [
             fig.add_subplot(1, cantidad, i + 1, projection="3d")
@@ -250,15 +247,15 @@ def _configurar_eje_triangular(ax, L: int) -> None:
 
 def _dibujar_red(ax, spins: np.ndarray, geometria: str = "cuadrada"):
     """Dibuja todos los sitios de la red en su dimensión física."""
-    if geometria == "cubica":
+    if geometria in GEOMETRIAS_3D:
         L = spins.shape[0]
-        x, y, z = _coords_cubicas(L)
+        x, y, z = coordenadas_cubicas(geometria, L)
         sc = ax.scatter(
             x,
             y,
             z,
             c=_colores_de_spins(spins),
-            s=max(18.0, 5200.0 / (L * L)),
+            s=max(7.0, 32000.0 / spins.size),
             marker="o",
             alpha=0.72,
             edgecolors="black",
@@ -299,7 +296,7 @@ def _dibujar_red(ax, spins: np.ndarray, geometria: str = "cuadrada"):
 def _actualizar_red(artista, spins: np.ndarray, geometria: str = "cuadrada") -> None:
     if geometria == "triangular":
         artista.set_facecolor(_colores_de_spins(spins))
-    elif geometria == "cubica":
+    elif geometria in GEOMETRIAS_3D:
         artista.set_facecolor(_colores_de_spins(spins))
     else:
         artista.set_data(spins)
@@ -311,7 +308,7 @@ def guardar_instantanea(
     ruta: Path,
     geometria: str = "cuadrada",
 ) -> None:
-    if geometria == "cubica":
+    if geometria in GEOMETRIAS_3D:
         fig = plt.figure(figsize=(6.2, 5.8))
         ax = fig.add_subplot(111, projection="3d")
     else:
@@ -342,7 +339,7 @@ def crear_video(
     for viejo in carpeta_frames.glob("frame_*.png"):
         viejo.unlink()
 
-    figsize = (15.2, 5.4) if geometria == "cubica" else (13.5, 4.8)
+    figsize = (15.2, 5.4) if geometria in GEOMETRIAS_3D else (13.5, 4.8)
     fig, axes = _crear_paneles_red(geometria, len(modelos), figsize)
     artistas = []
     for ax, (titulo, modelo) in zip(axes, modelos):
@@ -366,7 +363,7 @@ def crear_video(
         for frame in range(n_frames):
             for art, (_, modelo) in zip(artistas, modelos):
                 _actualizar_red(art, modelo.grid_history[frame], geometria)
-            if geometria == "cubica":
+            if geometria in GEOMETRIAS_3D:
                 azimut = VISTA_3D_AZIMUT + ROTACION_3D_POR_FRAME * frame
                 for ax in axes:
                     ax.view_init(elev=VISTA_3D_ELEVACION, azim=azimut)
@@ -404,7 +401,7 @@ def _crear_video_funcanimation(
     geometria: str = "cuadrada",
 ) -> Path:
     n_frames = min(len(m.grid_history) for _, m in modelos)
-    figsize = (15.2, 5.4) if geometria == "cubica" else (13.5, 4.8)
+    figsize = (15.2, 5.4) if geometria in GEOMETRIAS_3D else (13.5, 4.8)
     fig, axes = _crear_paneles_red(geometria, len(modelos), figsize)
     artistas = []
     for ax, (titulo, modelo) in zip(axes, modelos):
@@ -424,7 +421,7 @@ def _crear_video_funcanimation(
     def actualizar(frame: int):
         for art, (_, modelo) in zip(artistas, modelos):
             _actualizar_red(art, modelo.grid_history[frame], geometria)
-        if geometria == "cubica":
+        if geometria in GEOMETRIAS_3D:
             azimut = VISTA_3D_AZIMUT + ROTACION_3D_POR_FRAME * frame
             for ax in axes:
                 ax.view_init(elev=VISTA_3D_ELEVACION, azim=azimut)
@@ -614,12 +611,16 @@ class GrabadorVideoTemperatura:
             viejo.unlink()
 
         self.fig = plt.figure(figsize=(12.5, 5.4))
-        proyeccion = "3d" if geometria == "cubica" else None
+        proyeccion = "3d" if geometria in GEOMETRIAS_3D else None
         self.ax_red = self.fig.add_subplot(1, 2, 1, projection=proyeccion)
         self.ax_cur = self.fig.add_subplot(1, 2, 2)
 
         # Placeholder inicial; se reemplaza en el primer agregar_paso.
-        forma_placeholder = (2, 2, 2) if geometria == "cubica" else (2, 2)
+        if geometria in GEOMETRIAS_3D:
+            q = especificacion_cubica(geometria).sitios_por_celda
+            forma_placeholder = (2, 2, 2) if q == 1 else (2, 2, 2, q)
+        else:
+            forma_placeholder = (2, 2)
         self.artista_red = _dibujar_red(
             self.ax_red,
             np.ones(forma_placeholder, dtype=int),
@@ -693,7 +694,7 @@ class GrabadorVideoTemperatura:
             self._eje_red_listo = True
         else:
             _actualizar_red(self.artista_red, red, self.geometria)
-        if self.geometria == "cubica":
+        if self.geometria in GEOMETRIAS_3D:
             azimut = VISTA_3D_AZIMUT + ROTACION_3D_POR_FRAME * indice
             self.ax_red.view_init(elev=VISTA_3D_ELEVACION, azim=azimut)
 

@@ -8,10 +8,12 @@ import numpy as np
 
 from .base import IsingBase
 from .cubica import IsingCubica
+from .cubicas_centradas import IsingBCC, IsingFCC
 from .cuadrada import IsingCuadrada
+from .topologia_cubica import especificacion_cubica
 from .triangular import IsingTriangular
 
-REDES = ("cuadrada", "triangular", "cubica")
+REDES = ("cuadrada", "triangular", "cubica", "bcc", "fcc")
 
 # Alias histórico.
 Ising2D = IsingCuadrada
@@ -20,6 +22,8 @@ _CLASES: dict[str, Type[IsingBase]] = {
     "cuadrada": IsingCuadrada,
     "triangular": IsingTriangular,
     "cubica": IsingCubica,
+    "bcc": IsingBCC,
+    "fcc": IsingFCC,
 }
 
 
@@ -31,6 +35,11 @@ def clase_ising(geometria: str) -> Type[IsingBase]:
 
 def crear_ising(geometria: str, **kwargs) -> IsingBase:
     return clase_ising(geometria)(**kwargs)
+
+
+def dimension_red(geometria: str) -> int:
+    """Dimensión espacial declarada por la geometría."""
+    return clase_ising(geometria).dimension
 
 
 def tc_teorica(geometria: str, J: float = 1.0, kB: float = 1.0) -> float:
@@ -45,9 +54,9 @@ def tc_teorica(geometria: str, J: float = 1.0, kB: float = 1.0) -> float:
     if geometria == "triangular":
         # Triangular: Tc = 4J / ln(3)
         return 4.0 * J / (kB * np.log(3.0))
-    if geometria == "cubica":
-        # Estimación numérica de alta precisión: kB Tc / J ≈ 4.511524.
-        return 4.511524 * J / kB
+    if geometria in {"cubica", "bcc", "fcc"}:
+        # En 3D se usan estimaciones numéricas aceptadas, no soluciones exactas.
+        return especificacion_cubica(geometria).tc_referencia * J / kB
     raise ValueError(f"geometria desconocida: {geometria!r}")
 
 
@@ -56,6 +65,8 @@ def etiqueta_red(geometria: str) -> str:
         "cuadrada": "Red cuadrada (2D, 4 vecinos)",
         "triangular": "Red triangular (2D, 6 vecinos)",
         "cubica": "Red cúbica simple (3D, 6 vecinos)",
+        "bcc": "Red cúbica centrada en el cuerpo (BCC, 3D, 8 vecinos)",
+        "fcc": "Red cúbica centrada en las caras (FCC, 3D, 12 vecinos)",
     }.get(geometria, geometria)
 
 
@@ -64,10 +75,13 @@ __all__ = [
     "IsingCuadrada",
     "IsingTriangular",
     "IsingCubica",
+    "IsingBCC",
+    "IsingFCC",
     "Ising2D",
     "REDES",
     "clase_ising",
     "crear_ising",
+    "dimension_red",
     "tc_teorica",
     "etiqueta_red",
 ]
