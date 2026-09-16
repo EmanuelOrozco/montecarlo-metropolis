@@ -1,4 +1,4 @@
-"""Núcleo compartido del modelo de Ising 2D con Metropolis."""
+"""Núcleo compartido del modelo de Ising en redes 2D y 3D."""
 
 from __future__ import annotations
 
@@ -11,10 +11,11 @@ INICIALIZACIONES = ("aleatorio", "ferromagnetico", "antiferromagnetico")
 
 
 class IsingBase(ABC):
-    """Red L×L de espines ±1. Las subclases definen vecinos y energía."""
+    """Red hipercúbica de espines ±1; la subclase define su geometría."""
 
     geometria: str = "base"
-    z_vecinos: int = 0  # número de coordinación
+    dimension: int = 2
+    z_vecinos: int = 0
 
     def __init__(
         self,
@@ -32,8 +33,14 @@ class IsingBase(ABC):
                 f"recibido: {inicializacion!r}"
             )
 
+        if L < 2:
+            raise ValueError("L debe ser mayor o igual que 2")
+        if T <= 0:
+            raise ValueError("T debe ser mayor que 0")
+
         self.L = L
-        self.Nspin = L * L
+        self.forma = (L,) * self.dimension
+        self.Nspin = L**self.dimension
         self.J = J
         self.h = h
         self.T = T
@@ -53,33 +60,32 @@ class IsingBase(ABC):
         self.grid_history: list[np.ndarray] = []
 
     def _crear_espines(self, modo: str) -> np.ndarray:
-        L = self.L
         if modo == "aleatorio":
-            return np.random.choice([-1, 1], size=(L, L))
+            return np.random.choice([-1, 1], size=self.forma)
         if modo == "ferromagnetico":
-            return np.ones((L, L), dtype=int)
-        # Patrón a cuadros (en triangular el AFM verdadero está frustrado).
-        i, j = np.indices((L, L))
-        return np.where((i + j) % 2 == 0, 1, -1).astype(int)
+            return np.ones(self.forma, dtype=int)
+        # Paridad alternada; en triangular el AFM está geométricamente frustrado.
+        paridad = np.indices(self.forma).sum(axis=0)
+        return np.where(paridad % 2 == 0, 1, -1).astype(int)
 
     @abstractmethod
     def _energia_y_magnetizacion(self) -> tuple[float, float]:
         """Energía total y magnetización; cada enlace se cuenta una sola vez."""
 
     @abstractmethod
-    def _suma_vecinos(self, i: int, j: int) -> int:
-        """Suma de los espines vecinos de (i, j) con PBC."""
+    def _suma_vecinos(self, *coordenadas: int) -> int:
+        """Suma de vecinos de un sitio con fronteras periódicas."""
 
     def _intentar_voltear(self) -> None:
         idx = random.randint(0, self.Nspin - 1)
-        i, j = divmod(idx, self.L)
-        old_spin_value = int(self.spins[i, j])
+        coordenadas = np.unravel_index(idx, self.forma)
+        old_spin_value = int(self.spins[coordenadas])
 
-        neighbor_sum = self._suma_vecinos(i, j)
+        neighbor_sum = self._suma_vecinos(*coordenadas)
         dE = 2 * (self.J * neighbor_sum + self.h) * old_spin_value
 
         if dE <= 0 or random.random() < np.exp(-self.beta * dE):
-            self.spins[i, j] = -old_spin_value
+            self.spins[coordenadas] = -old_spin_value
             self.E = self.E + dE
             self.m = self.m - 2 * old_spin_value
 

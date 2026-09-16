@@ -1,4 +1,4 @@
-"""Comparación de Tc estimada vs teórica al variar el tamaño de la celda.
+"""Comparación de Tc estimada vs referencia al variar el tamaño de la celda.
 
 Patrones de optimización:
 - Flyweight / LRU: tabla de vecinos reutilizada por (geometría, L).
@@ -35,6 +35,7 @@ from .config import (
     N_TEMPS_FINA,
     N_TEMPS_GRUESA,
     SEED,
+    l_max_comparacion,
     preparar_salidas_tamano,
 )
 from .ising import etiqueta_red, tc_teorica
@@ -48,6 +49,20 @@ _VECINOS_TRIANGULAR = (
     (-1, 1),
     (1, -1),
 )
+_VECINOS_CUBICA = (
+    (-1, 0, 0),
+    (1, 0, 0),
+    (0, -1, 0),
+    (0, 1, 0),
+    (0, 0, -1),
+    (0, 0, 1),
+)
+
+_OFFSETS = {
+    "cuadrada": _VECINOS_CUADRADA,
+    "triangular": _VECINOS_TRIANGULAR,
+    "cubica": _VECINOS_CUBICA,
+}
 
 
 @dataclass(slots=True)
@@ -85,15 +100,20 @@ def tamanos_celda(
 @lru_cache(maxsize=32)
 def tabla_vecinos(geometria: str, L: int) -> np.ndarray:
     """Flyweight: índices de vecinos con PBC, forma (N, z)."""
-    offsets = _VECINOS_CUADRADA if geometria == "cuadrada" else _VECINOS_TRIANGULAR
-    n = L * L
+    try:
+        offsets = _OFFSETS[geometria]
+    except KeyError as exc:
+        raise ValueError(f"Geometría no soportada: {geometria!r}") from exc
+    dimension = len(offsets[0])
+    forma = (L,) * dimension
+    n = L**dimension
     z = len(offsets)
     nb = np.empty((n, z), dtype=np.int32)
-    for i in range(L):
-        for j in range(L):
-            k = i * L + j
-            for p, (di, dj) in enumerate(offsets):
-                nb[k, p] = ((i + di) % L) * L + ((j + dj) % L)
+    for indice in range(n):
+        coords = np.unravel_index(indice, forma)
+        for p, offset in enumerate(offsets):
+            vecino = tuple((c + dc) % L for c, dc in zip(coords, offset))
+            nb[indice, p] = np.ravel_multi_index(vecino, forma)
     return nb
 
 
@@ -213,9 +233,11 @@ def estimar_tc_para_L(
     """Tc(L) con búsqueda gruesa y refinamiento alrededor del máximo de χ."""
     tc_teo = tc_teorica(geometria, J=J, kB=KB)
     vecinos = tabla_vecinos(geometria, L)
+    dimension = len(_OFFSETS[geometria][0])
+    nspin = L**dimension
     n_term, mcs = _mcs_para_L(L)
     rng = default_rng(seed + 1000 * L)
-    spins = np.ones(L * L, dtype=np.int8)
+    spins = np.ones(nspin, dtype=np.int8)
 
     t_lo = max(0.15, tc_teo * 0.62)
     t_hi = tc_teo * 1.55
@@ -234,7 +256,7 @@ def estimar_tc_para_L(
             t_hi,
         )
     )
-    spins_fino = np.ones(L * L, dtype=np.int8)
+    spins_fino = np.ones(nspin, dtype=np.int8)
     _mags_f, chis_f, _ = _barrido_chi(
         spins_fino, vecinos, temps_f, J, h, mcs, n_term, rng, reutilizar=True
     )
@@ -252,7 +274,7 @@ def estimar_tc_para_L(
     chi_max = float(np.max(chis_u))
     return ResultadoTamano(
         L=L,
-        N=L * L,
+        N=nspin,
         tc_estimada=tc_est,
         tc_teorica=tc_teo,
         error_relativo=error_relativo(tc_est, tc_teo),
@@ -268,7 +290,7 @@ class ComparadorTamano:
         self,
         geometria: str,
         l_min: int = L_MIN_COMP,
-        l_max: int = L_MAX_COMP,
+        l_max: int | None = None,
         paso: int = L_PASO_COMP,
         error_max: float = ERROR_REL_MAX,
         l_min_parada: int = L_MIN_PARADA,
@@ -276,7 +298,7 @@ class ComparadorTamano:
     ) -> None:
         self.geometria = geometria
         self.l_min = l_min
-        self.l_max = l_max
+        self.l_max = l_max if l_max is not None else l_max_comparacion(geometria)
         self.paso = paso
         self.error_max = error_max
         self.l_min_parada = l_min_parada
@@ -289,7 +311,7 @@ class ComparadorTamano:
             f"Comparación Tc vs L  |  {etiqueta_red(self.geometria)}\n"
             f"  L = {self.l_min} … {self.l_max} (paso {self.paso})  |  "
             f"parada si error ≤ {100 * self.error_max:.1f} % y L ≥ {self.l_min_parada}\n"
-            f"  Tc teórica = {tc_teo:.6f}"
+            f"  Tc de referencia = {tc_teo:.6f}"
         )
         for L in tamanos_celda(self.l_min, self.l_max, self.paso):
             fila = estimar_tc_para_L(L, self.geometria, seed=self.seed)
@@ -343,7 +365,13 @@ def graficar_comparacion(comp: ComparacionTc, ruta: Path) -> None:
 
     fig, (ax_t, ax_e) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
     ax_t.plot(Ls, tcs, "o-", color="#8E44AD", lw=1.8, ms=7, label=r"$T_c(L)$ estimada")
-    ax_t.axhline(teo, color="#27AE60", ls="--", lw=1.5, label=rf"$T_c$ teórica = {teo:.4f}")
+    ax_t.axhline(
+        teo,
+        color="#27AE60",
+        ls="--",
+        lw=1.5,
+        label=rf"$T_c$ de referencia = {teo:.4f}",
+    )
     ax_t.set_ylabel(r"$T_c$")
     ax_t.set_title(f"Temperatura crítica vs tamaño de celda — {etiqueta_red(comp.geometria)}")
     ax_t.legend(loc="best", fontsize=9)

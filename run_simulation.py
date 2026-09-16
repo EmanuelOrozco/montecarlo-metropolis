@@ -1,4 +1,4 @@
-"""Punto de entrada: elige red (cuadrada/triangular) y modo de análisis."""
+"""Punto de entrada para redes Ising 2D y cúbica simple 3D."""
 
 from __future__ import annotations
 
@@ -23,16 +23,22 @@ from src.ising import REDES, etiqueta_red
 
 def _menu_interactivo() -> tuple[str, str]:
     print(
-        "\n=== Modelo de Ising 2D — Monte Carlo Metropolis ===\n"
+        "\n=== Modelo de Ising 2D/3D — Monte Carlo Metropolis ===\n"
         "Red:\n"
-        "  1) Cuadrada   (4 vecinos)\n"
-        "  2) Triangular (6 vecinos)\n"
-        "  3) Ambas redes\n"
+        "  1) Cuadrada      (2D, 4 vecinos)\n"
+        "  2) Triangular    (2D, 6 vecinos)\n"
+        "  3) Cúbica simple (3D, 6 vecinos)\n"
+        "  4) Todas las redes\n"
     )
     while True:
-        r = input("Elige la red [1/2/3]: ").strip()
-        if r in {"1", "2", "3"}:
-            red = {"1": "cuadrada", "2": "triangular", "3": "ambas"}[r]
+        r = input("Elige la red [1/2/3/4]: ").strip()
+        if r in {"1", "2", "3", "4"}:
+            red = {
+                "1": "cuadrada",
+                "2": "triangular",
+                "3": "cubica",
+                "4": "todas",
+            }[r]
             break
         print("Opción no válida.")
 
@@ -60,11 +66,11 @@ def _menu_interactivo() -> tuple[str, str]:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Ising 2D Metropolis: red cuadrada o triangular.",
+        description="Ising Metropolis: redes cuadrada, triangular o cúbica simple.",
     )
     parser.add_argument(
         "--red",
-        choices=(*REDES, "ambas"),
+        choices=(*REDES, "ambas", "todas"),
         default=None,
         help="Geometría de la red (o ambas).",
     )
@@ -78,7 +84,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _geometrias(red: str) -> tuple[str, ...]:
-    if red == "ambas":
+    if red in {"ambas", "todas"}:
         return GEOMETRIAS
     return (red,)
 

@@ -7,23 +7,30 @@ T = 1.0
 H = 0.1
 MCS = 1000
 L = 10
+L_CUBICA = 8
 SEED = 35000
 
 J_FERRO = 1.0
-J_ANTIFERRO = 1.0
+J_ANTIFERRO = -1.0
 
 COLOR_ARRIBA = "#E74C3C"
 COLOR_ABAJO = "#1F4E79"
+VISTA_3D_ELEVACION = 22.0
+VISTA_3D_AZIMUT = 38.0
+ROTACION_3D_POR_FRAME = 0.35
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTADOS = ROOT / "resultados"
 
-# Geometrías disponibles: cada una tiene la misma estructura de salidas.
-GEOMETRIAS = ("cuadrada", "triangular")
+# Geometrías disponibles: dos redes 2D y una red 3D.
+GEOMETRIAS_2D = ("cuadrada", "triangular")
+GEOMETRIAS_3D = ("cubica",)
+GEOMETRIAS = (*GEOMETRIAS_2D, *GEOMETRIAS_3D)
 
 # Barrido de temperatura (|m|(T) y Tc).
 T_MIN = 0.001
 T_MAX = 5.0
+T_MAX_CUBICA = 7.0
 N_TEMPERATURAS = 55
 MCS_T = 800
 # Se descartan los primeros MCS (termalización) y el promedio se toma del resto.
@@ -35,6 +42,7 @@ VIDEO_T_FPS = 4
 # Comparación de Tc vs tamaño de celda (L = 2, 4, …, L_MAX_COMP).
 L_MIN_COMP = 2
 L_MAX_COMP = 30
+L_MAX_COMP_CUBICA = 12
 L_PASO_COMP = 2
 ERROR_REL_MAX = 0.02
 N_TEMPS_GRUESA = 16
@@ -62,6 +70,21 @@ CASOS = (
         "J": J_ANTIFERRO,
     },
 )
+
+
+def lado_geometria(geometria: str) -> int:
+    """Lado predeterminado; 3D usa menos sitios para limitar el coste."""
+    return L_CUBICA if geometria in GEOMETRIAS_3D else L
+
+
+def t_max_geometria(geometria: str) -> float:
+    """El barrido 3D debe superar Tc≈4.512."""
+    return T_MAX_CUBICA if geometria in GEOMETRIAS_3D else T_MAX
+
+
+def l_max_comparacion(geometria: str) -> int:
+    """Límite seguro del barrido de tamaño según la dimensión."""
+    return L_MAX_COMP_CUBICA if geometria in GEOMETRIAS_3D else L_MAX_COMP
 
 
 def dir_geometria(geometria: str) -> Path:

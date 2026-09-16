@@ -10,7 +10,14 @@ from matplotlib.animation import FFMpegWriter, FuncAnimation, PillowWriter
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
 
-from .config import COLOR_ABAJO, COLOR_ARRIBA, MCS_TERMALIZACION
+from .config import (
+    COLOR_ABAJO,
+    COLOR_ARRIBA,
+    MCS_TERMALIZACION,
+    ROTACION_3D_POR_FRAME,
+    VISTA_3D_AZIMUT,
+    VISTA_3D_ELEVACION,
+)
 from .ising import IsingBase
 
 
@@ -188,6 +195,45 @@ def _tamano_marcador(L: int, panel_ancho: float = 4.0) -> float:
     return max(12.0, 1800.0 * panel_ancho / (L * L))
 
 
+def _coords_cubicas(L: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    x, y, z = np.indices((L, L, L))
+    return x.ravel(), y.ravel(), z.ravel()
+
+
+def _configurar_eje_cubico(ax, L: int, azimut: float = VISTA_3D_AZIMUT) -> None:
+    """Configura una cámara isométrica y escalas iguales para la red 3D."""
+    limite = (-0.6, L - 0.4)
+    ax.set_xlim(*limite)
+    ax.set_ylim(*limite)
+    ax.set_zlim(*limite)
+    ax.set_box_aspect((1, 1, 1))
+    ax.set_xlabel("x", labelpad=2)
+    ax.set_ylabel("y", labelpad=2)
+    ax.set_zlabel("z", labelpad=2)
+    ax.set_xticks((0, L - 1))
+    ax.set_yticks((0, L - 1))
+    ax.set_zticks((0, L - 1))
+    ax.view_init(elev=VISTA_3D_ELEVACION, azim=azimut)
+    ax.grid(True, alpha=0.2)
+
+
+def _crear_paneles_red(
+    geometria: str,
+    cantidad: int,
+    figsize: tuple[float, float],
+):
+    """Crea ejes 2D o 3D sin contaminar el pipeline de simulación."""
+    if geometria == "cubica":
+        fig = plt.figure(figsize=figsize)
+        axes = [
+            fig.add_subplot(1, cantidad, i + 1, projection="3d")
+            for i in range(cantidad)
+        ]
+        return fig, np.asarray(axes, dtype=object)
+    fig, axes = plt.subplots(1, cantidad, figsize=figsize, squeeze=False)
+    return fig, axes.ravel()
+
+
 def _configurar_eje_triangular(ax, L: int) -> None:
     """Límites y aspecto para que los triángulos se vean equiláteros."""
     margin = 0.65
@@ -203,7 +249,25 @@ def _configurar_eje_triangular(ax, L: int) -> None:
 
 
 def _dibujar_red(ax, spins: np.ndarray, geometria: str = "cuadrada"):
-    """Dibuja la red y devuelve el artista actualizable (AxesImage o PathCollection)."""
+    """Dibuja todos los sitios de la red en su dimensión física."""
+    if geometria == "cubica":
+        L = spins.shape[0]
+        x, y, z = _coords_cubicas(L)
+        sc = ax.scatter(
+            x,
+            y,
+            z,
+            c=_colores_de_spins(spins),
+            s=max(18.0, 5200.0 / (L * L)),
+            marker="o",
+            alpha=0.72,
+            edgecolors="black",
+            linewidths=0.18,
+            depthshade=False,
+        )
+        _configurar_eje_cubico(ax, L)
+        return sc
+
     if geometria != "triangular":
         im = ax.imshow(
             spins,
@@ -235,6 +299,8 @@ def _dibujar_red(ax, spins: np.ndarray, geometria: str = "cuadrada"):
 def _actualizar_red(artista, spins: np.ndarray, geometria: str = "cuadrada") -> None:
     if geometria == "triangular":
         artista.set_facecolor(_colores_de_spins(spins))
+    elif geometria == "cubica":
+        artista.set_facecolor(_colores_de_spins(spins))
     else:
         artista.set_data(spins)
 
@@ -245,7 +311,11 @@ def guardar_instantanea(
     ruta: Path,
     geometria: str = "cuadrada",
 ) -> None:
-    fig, ax = plt.subplots(figsize=(5.4, 5.4))
+    if geometria == "cubica":
+        fig = plt.figure(figsize=(6.2, 5.8))
+        ax = fig.add_subplot(111, projection="3d")
+    else:
+        fig, ax = plt.subplots(figsize=(5.4, 5.4))
     _dibujar_red(ax, spins, geometria=geometria)
     ax.set_title(titulo)
     ax.legend(handles=_leyenda_espines(), loc="upper right", fontsize=8, framealpha=0.92)
@@ -272,7 +342,8 @@ def crear_video(
     for viejo in carpeta_frames.glob("frame_*.png"):
         viejo.unlink()
 
-    fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.8))
+    figsize = (15.2, 5.4) if geometria == "cubica" else (13.5, 4.8)
+    fig, axes = _crear_paneles_red(geometria, len(modelos), figsize)
     artistas = []
     for ax, (titulo, modelo) in zip(axes, modelos):
         art = _dibujar_red(ax, modelo.grid_history[0], geometria=geometria)
@@ -295,6 +366,10 @@ def crear_video(
         for frame in range(n_frames):
             for art, (_, modelo) in zip(artistas, modelos):
                 _actualizar_red(art, modelo.grid_history[frame], geometria)
+            if geometria == "cubica":
+                azimut = VISTA_3D_AZIMUT + ROTACION_3D_POR_FRAME * frame
+                for ax in axes:
+                    ax.view_init(elev=VISTA_3D_ELEVACION, azim=azimut)
             paso = 0 if frame == 0 else frame * stride
             titulo_paso.set_text(f"{prefijo}Paso de Monte Carlo: {paso}")
             fig.savefig(carpeta_frames / f"frame_{frame:04d}.png", dpi=100)
@@ -329,7 +404,8 @@ def _crear_video_funcanimation(
     geometria: str = "cuadrada",
 ) -> Path:
     n_frames = min(len(m.grid_history) for _, m in modelos)
-    fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.8))
+    figsize = (15.2, 5.4) if geometria == "cubica" else (13.5, 4.8)
+    fig, axes = _crear_paneles_red(geometria, len(modelos), figsize)
     artistas = []
     for ax, (titulo, modelo) in zip(axes, modelos):
         art = _dibujar_red(ax, modelo.grid_history[0], geometria=geometria)
@@ -348,6 +424,10 @@ def _crear_video_funcanimation(
     def actualizar(frame: int):
         for art, (_, modelo) in zip(artistas, modelos):
             _actualizar_red(art, modelo.grid_history[frame], geometria)
+        if geometria == "cubica":
+            azimut = VISTA_3D_AZIMUT + ROTACION_3D_POR_FRAME * frame
+            for ax in axes:
+                ax.view_init(elev=VISTA_3D_ELEVACION, azim=azimut)
         paso = 0 if frame == 0 else frame * stride
         titulo_paso.set_text(f"Paso de Monte Carlo: {paso}")
         return [*artistas, titulo_paso]
@@ -377,7 +457,7 @@ def graficar_magnetizacion_vs_t(
     fig, (ax_m, ax_chi) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
     ax_m.plot(temperaturas, magnetizacion, "o-", lw=1.8, ms=5, color="#C0392B", label=r"$\langle |m|/N\rangle$")
-    ax_m.axvline(tc_teorica, color="#27AE60", ls="--", lw=1.4, label=rf"$T_c$ teórica ≈ {tc_teorica:.3f}")
+    ax_m.axvline(tc_teorica, color="#27AE60", ls="--", lw=1.4, label=rf"$T_c$ referencia ≈ {tc_teorica:.3f}")
     ax_m.axvline(tc_estimada, color="#8E44AD", ls=":", lw=1.6, label=rf"$T_c$ estimada (máx. χ) ≈ {tc_estimada:.3f}")
     ax_m.set_ylabel(r"Magnetización  $\langle |m|/N\rangle$")
     titulo_m = "Magnetización en función de la temperatura"
@@ -416,7 +496,7 @@ def graficar_energia_vs_t(
     fig, (ax_e, ax_c) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
     ax_e.plot(temperaturas, energia, "o-", lw=1.8, ms=5, color="#1F618D", label=r"$\langle E/N\rangle$")
-    ax_e.axvline(tc_teorica, color="#27AE60", ls="--", lw=1.4, label=rf"$T_c$ teórica ≈ {tc_teorica:.3f}")
+    ax_e.axvline(tc_teorica, color="#27AE60", ls="--", lw=1.4, label=rf"$T_c$ referencia ≈ {tc_teorica:.3f}")
     ax_e.axvline(tc_estimada, color="#8E44AD", ls=":", lw=1.6, label=rf"$T_c$ estimada (máx. χ) ≈ {tc_estimada:.3f}")
     ax_e.set_ylabel(r"Energía  $\langle E/N\rangle$")
     titulo_e = "Energía en función de la temperatura"
@@ -534,13 +614,15 @@ class GrabadorVideoTemperatura:
             viejo.unlink()
 
         self.fig = plt.figure(figsize=(12.5, 5.4))
-        self.ax_red = self.fig.add_subplot(1, 2, 1)
+        proyeccion = "3d" if geometria == "cubica" else None
+        self.ax_red = self.fig.add_subplot(1, 2, 1, projection=proyeccion)
         self.ax_cur = self.fig.add_subplot(1, 2, 2)
 
         # Placeholder inicial; se reemplaza en el primer agregar_paso.
+        forma_placeholder = (2, 2, 2) if geometria == "cubica" else (2, 2)
         self.artista_red = _dibujar_red(
             self.ax_red,
-            np.ones((2, 2), dtype=int),
+            np.ones(forma_placeholder, dtype=int),
             geometria=geometria,
         )
         self.titulo_red = self.ax_red.set_title("")
@@ -557,7 +639,7 @@ class GrabadorVideoTemperatura:
             color="#27AE60",
             ls="--",
             lw=1.3,
-            label=rf"$T_c$ teórica ≈ {tc_teorica:.3f}",
+            label=rf"$T_c$ referencia ≈ {tc_teorica:.3f}",
         )
         self.linea_tc_est = self.ax_cur.axvline(
             tc_teorica,
@@ -611,6 +693,9 @@ class GrabadorVideoTemperatura:
             self._eje_red_listo = True
         else:
             _actualizar_red(self.artista_red, red, self.geometria)
+        if self.geometria == "cubica":
+            azimut = VISTA_3D_AZIMUT + ROTACION_3D_POR_FRAME * indice
+            self.ax_red.view_init(elev=VISTA_3D_ELEVACION, azim=azimut)
 
         self.titulo_red.set_text(f"Red final\npaso {indice + 1}/{self.n_total}")
         self.linea_hist.set_data(temps, mags)

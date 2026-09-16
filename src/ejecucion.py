@@ -10,17 +10,17 @@ from .config import (
     CASOS,
     H,
     KB,
-    L,
     MCS,
     MCS_TERMALIZACION,
     N_TEMPERATURAS,
     SEED,
     T,
-    T_MAX,
     T_MIN,
     VIDEO_T_FPS,
+    lado_geometria,
     preparar_salidas_t_fija,
     preparar_salidas_vs_t,
+    t_max_geometria,
 )
 from .ising import crear_ising, etiqueta_red, tc_teorica
 from .visualizacion import (
@@ -39,8 +39,10 @@ def ejecutar_temperatura_fija(geometria: str) -> None:
     rutas = preparar_salidas_t_fija(geometria)
     stride_video = max(1, MCS // 250)
     etiqueta = etiqueta_red(geometria)
+    lado = lado_geometria(geometria)
+    forma = "×".join([str(lado)] * (3 if geometria == "cubica" else 2))
 
-    print(f"{etiqueta}  |  {L}×{L}  |  MCS={MCS}  |  T={T}  |  h={H}")
+    print(f"{etiqueta}  |  {forma}  |  MCS={MCS}  |  T={T}  |  h={H}")
     print(f"Salida → {rutas['base']}")
     print(f"Guardando red cada {stride_video} paso(s) para el video.\n")
 
@@ -48,7 +50,7 @@ def ejecutar_temperatura_fija(geometria: str) -> None:
     for i, caso in enumerate(CASOS):
         modelo = crear_ising(
             geometria,
-            L=L,
+            L=lado,
             J=caso["J"],
             h=H,
             T=T,
@@ -113,8 +115,12 @@ def ejecutar_magnetizacion_vs_t(geometria: str) -> None:
     rutas = preparar_salidas_vs_t(geometria)
     etiqueta = etiqueta_red(geometria)
     tc_teo = tc_teorica(geometria)
+    lado = lado_geometria(geometria)
+    t_max = t_max_geometria(geometria)
 
-    temps_previstas = _malla_temperaturas(T_MIN, T_MAX, N_TEMPERATURAS, geometria)
+    temps_previstas = _malla_temperaturas(
+        T_MIN, t_max, N_TEMPERATURAS, geometria
+    )
     grabador = GrabadorVideoTemperatura(
         carpeta_video=rutas["video"],
         tc_teorica=tc_teo,
@@ -132,7 +138,12 @@ def ejecutar_magnetizacion_vs_t(geometria: str) -> None:
     print(f"Salida → {rutas['base']}")
     print(f"Video: {VIDEO_T_FPS} fps (1 frame por paso de T).\n")
 
-    resultado = barrido_temperatura(geometria=geometria, on_paso=on_paso)
+    resultado = barrido_temperatura(
+        geometria=geometria,
+        t_max=t_max,
+        L_red=lado,
+        on_paso=on_paso,
+    )
 
     print("\nEnsamblando video principal...")
     video = grabador.finalizar(rutas["video"] / "magnetizacion_hasta_tc.mp4")
@@ -173,7 +184,7 @@ def ejecutar_magnetizacion_vs_t(geometria: str) -> None:
 
     print(
         f"\nPromedio de producción: MCS ≥ {resultado.mcs_termalizacion}\n"
-        f"Tc teórica ({geometria}) ≈ {resultado.tc_teorica:.4f}\n"
+        f"Tc de referencia ({geometria}) ≈ {resultado.tc_teorica:.4f}\n"
         f"Tc estimada (máx. χ) ≈ {resultado.tc_estimada:.4f}\n"
         f"Puntos de T: {len(resultado.temperaturas)}\n"
         f"Video: {video}\n"
@@ -182,6 +193,6 @@ def ejecutar_magnetizacion_vs_t(geometria: str) -> None:
 
 
 def ejecutar_tc_vs_tamano(geometria: str) -> None:
-    """Barrido L=2,4,…,L_MAX: Tc(L) vs Tc teórica, parada al 2 % de error."""
+    """Barrido L=2,4,…,L_MAX: Tc(L) vs referencia, parada al 2 %."""
     print(f"{etiqueta_red(geometria)}")
     ejecutar_comparacion_tamano(geometria)

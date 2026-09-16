@@ -1,6 +1,6 @@
-# Modelo de Ising 2D con Monte Carlo Metropolis
+# Modelo de Ising 2D/3D con Monte Carlo Metropolis
 
-Simulación del modelo de Ising en redes **cuadrada** (4 vecinos) y **triangular** (6 vecinos) con el algoritmo de Metropolis. Cada geometría admite los mismos análisis:
+Simulación del modelo de Ising en redes **cuadrada 2D**, **triangular 2D** y **cúbica simple 3D** mediante el algoritmo de Metropolis. Cada geometría admite los mismos análisis:
 
 1. **Temperatura fija** — tres configuraciones iniciales, gráficas \(E/N\) y \(m/N\) vs MCS, video de la red.
 2. **Magnetización vs temperatura** — barrido de \(T\), estimación de \(T_c\) y video hasta el régimen crítico.
@@ -22,13 +22,15 @@ python -m pip install -r requirements.txt
 ```bash
 python run_simulation.py                          # menú interactivo
 python run_simulation.py --red cuadrada --modo actual
+python run_simulation.py --red cubica --modo actual
+python run_simulation.py --red cubica --modo temperatura
 python run_simulation.py --red cuadrada --modo tamano
-python run_simulation.py --red ambas --modo todo
+python run_simulation.py --red todas --modo todo
 ```
 
 | Flag | Valores |
 | --- | --- |
-| `--red` | `cuadrada`, `triangular`, `ambas` |
+| `--red` | `cuadrada`, `triangular`, `cubica`, `todas` |
 | `--modo` | `actual` (T fija), `temperatura` (\(\|m\|(T)\)), `tamano` (\(T_c\) vs \(L\)), `todo` |
 
 ## Estructura
@@ -37,34 +39,64 @@ python run_simulation.py --red ambas --modo todo
 .
 ├── run_simulation.py          # menú / CLI
 ├── src/
-│   ├── ising/                 # modelos por geometría
-│   │   ├── base.py            # Metropolis compartido
-│   │   ├── cuadrada.py        # 4 vecinos
-│   │   └── triangular.py      # 6 vecinos
+│   ├── ising/                 # dominio: modelos por geometría
+│   │   ├── base.py            # Metropolis común para dimensión d
+│   │   ├── cuadrada.py        # 2D, 4 vecinos
+│   │   ├── triangular.py      # 2D, 6 vecinos
+│   │   └── cubica.py          # 3D, 6 vecinos
 │   ├── config.py              # parámetros y rutas
 │   ├── ejecucion.py           # pipelines (T fija y vs T)
 │   ├── analisis_temperatura.py
 │   ├── comparacion_tc.py      # Tc(L) vs teórica, parada al 2 %
 │   └── visualizacion.py
+├── tests/                     # invariantes 2D/3D
 └── resultados/
     ├── cuadrada/
     │   ├── temperatura_fija/          # graficas / redes / video
     │   ├── magnetizacion_vs_t/        # |m|(T), E(T), video
     │   └── tc_vs_tamano/              # tabla y gráfica Tc(L)
-
-    └── triangular/
+    ├── triangular/
+    │   ├── temperatura_fija/
+    │   └── magnetizacion_vs_t/
+    └── cubica/
         ├── temperatura_fija/
-        └── magnetizacion_vs_t/
+        ├── magnetizacion_vs_t/
+        └── tc_vs_tamano/
 ```
 
-Cada análisis usa la misma carpeta interna: `graficas/`, `redes/`, `video/`.
+Las salidas se agrupan por geometría y análisis; los barridos de tamaño
+añaden una carpeta `tablas/`.
+
+## Arquitectura
+
+- `src/ising/base.py` contiene el algoritmo de Metropolis independiente de la
+  dimensión: calcula \(N=L^d\), crea la forma de la red y conserva los
+  historiales.
+- Cada geometría implementa únicamente su energía y vecindad. La red cúbica
+  cuenta una vez los enlaces \(+x,+y,+z\) y consulta los seis vecinos
+  \(\pm x,\pm y,\pm z\).
+- `src/ejecucion.py` orquesta los casos de uso; `src/visualizacion.py` se
+  encarga exclusivamente de gráficas y videos.
+- `src/config.py` separa los tamaños 2D (`L`) y 3D (`L_CUBICA`) para controlar
+  el coste \(O(L^d)\).
+
+Las pruebas se ejecutan con:
+
+```bash
+python -m unittest discover -v
+```
 
 ## Temperaturas críticas (teoría, \(h=0\), \(J=k_B=1\))
 
-| Red | \(T_c\) |
-| --- | --- |
-| Cuadrada (Onsager) | \(2/\ln(1+\sqrt{2}) \approx 2.269\) |
-| Triangular | \(4/\ln(3) \approx 3.641\) |
+| Red | Dimensión | \(T_c\) de referencia |
+| --- | --- | --- |
+| Cuadrada (Onsager) | 2D | \(2/\ln(1+\sqrt{2}) \approx 2.269\) |
+| Triangular | 2D | \(4/\ln(3) \approx 3.641\) |
+| Cúbica simple | 3D | \(4.511524\), estimación numérica |
+
+Las dos referencias 2D son exactas. El modelo cúbico simple 3D no tiene una
+solución analítica exacta conocida; por eso se compara con el valor numérico
+aceptado \(k_B T_c/J\approx4.511524\).
 
 En la simulación se estima \(T_c\) como la temperatura donde la susceptibilidad \(\chi\) es máxima:
 
@@ -74,7 +106,12 @@ En la simulación se estima \(T_c\) como la temperatura donde la susceptibilidad
 
 Eso localiza la transición porque \(\chi\) diverge (en el límite termodinámico) en \(T_c\).
 
-En `--modo tamano` se estima \(T_c(L)\) para \(L=2,4,\ldots,L_{\max}\) (por defecto hasta 30; búsqueda gruesa + refinamiento del pico de \(\chi\)) y se compara con la \(T_c\) exacta. El error relativo es \(|T_c(L)-T_c|/T_c\); el barrido se detiene al llegar al 2 % (solo a partir de \(L\ge 8\), para no cortar por ruido en celdas muy pequeñas).
+En `--modo tamano` se estima \(T_c(L)\) para
+\(L=2,4,\ldots,L_{\max}\) mediante una búsqueda gruesa y refinamiento del
+pico de \(\chi\). El máximo predeterminado es 30 en 2D y 12 en 3D. Se compara
+con la referencia correspondiente usando
+\(|T_c(L)-T_c|/T_c\), y el barrido se detiene al llegar al 2 % (solo desde
+\(L\ge 8\), para no cortar por ruido en celdas muy pequeñas).
 
 ## Termalización y promedios
 
@@ -93,6 +130,12 @@ C = \frac{\mathrm{Var}(E)}{N T^2}
 
 ## Parámetros
 
-En `src/config.py`: `L`, `T`, `H`, `MCS`, `SEED`, `T_MIN`, `T_MAX`, `N_TEMPERATURAS`, `MCS_T`, `MCS_TERMALIZACION`, `H_T`, `VIDEO_T_FPS`, `CASO_TEMPERATURA`, `L_MIN_COMP`, `L_MAX_COMP`, `ERROR_REL_MAX`.
+En `src/config.py`: `L`, `L_CUBICA`, `T`, `H`, `MCS`, `SEED`, `T_MIN`,
+`T_MAX`, `T_MAX_CUBICA`, `N_TEMPERATURAS`, `MCS_T`,
+`MCS_TERMALIZACION`, `L_MAX_COMP`, `L_MAX_COMP_CUBICA` y
+`ERROR_REL_MAX`.
 
-**Rojo** = espín arriba (`+1`); **azul** = espín abajo (`-1`). Las instantáneas triangulares se dibujan con offset hexagonal.
+**Rojo** = espín arriba (`+1`); **azul** = espín abajo (`-1`). Las
+instantáneas triangulares usan offset hexagonal. En la red cúbica, las
+imágenes y videos representan los \(L^3\) sitios en ejes \(x,y,z\), con
+transparencia y rotación gradual de cámara para observar el interior.
