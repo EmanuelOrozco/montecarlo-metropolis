@@ -1,0 +1,9 @@
+modelo: Heisenberg clásico
+estructura: Fe (mp-13, BCC, z=8, a=2.863 Å)
+inicializacion: ferromagnetico
+L_optimo: 8
+J_eV: 0.041868999654117556
+Tc_estimada_K: 1185.0342889615379
+Tc_experimental_K: 1043.0
+T_min_K: 0.1
+kB_eV_per_K: 8.617333262145e-05

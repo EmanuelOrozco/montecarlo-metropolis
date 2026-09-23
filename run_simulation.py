@@ -1,4 +1,4 @@
-"""Punto de entrada para redes Ising 2D y cúbica simple 3D."""
+"""Punto de entrada Ising / Heisenberg clásico (Metropolis)."""
 
 from __future__ import annotations
 
@@ -12,96 +12,172 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-from src.config import GEOMETRIAS, RESULTADOS, preparar_carpetas
+from src.config import (
+    GEOMETRIAS,
+    GEOMETRIAS_HEISENBERG,
+    INICIALIZACIONES,
+    MODELOS,
+    RESULTADOS,
+    preparar_carpetas,
+)
 from src.ejecucion import (
     ejecutar_magnetizacion_vs_t,
     ejecutar_tc_vs_tamano,
     ejecutar_temperatura_fija,
 )
+from src.heisenberg import ejecutar_heisenberg_completo
 from src.ising import REDES, etiqueta_red
+from src.materials.estructura import etiqueta_estructura
+from src.materials.mp_client import MATERIALES_MP
 
 
-def _menu_interactivo() -> tuple[str, str]:
+def _menu_interactivo() -> tuple[str, str, str, str]:
     print(
-        "\n=== Modelo de Ising 2D/3D — Monte Carlo Metropolis ===\n"
-        "Red:\n"
-        "  1) Cuadrada      (2D, 4 vecinos)\n"
-        "  2) Triangular    (2D, 6 vecinos)\n"
-        "  3) Cúbica simple (3D, 6 vecinos)\n"
-        "  4) Cúbica BCC    (3D, 8 vecinos)\n"
-        "  5) Cúbica FCC    (3D, 12 vecinos)\n"
-        "  6) Fe mp-13      (BCC, Materials Project)\n"
-        "  7) Ni mp-23      (FCC, Materials Project)\n"
-        "  8) Co mp-102     (FCC, Materials Project)\n"
-        "  9) Todas las redes\n"
+        "\n=== Monte Carlo Metropolis — Ising / Heisenberg clásico ===\n"
+        "Modelo:\n"
+        "  1) Ising (espines ±1)\n"
+        "  2) Heisenberg clásico (vectores unitarios)\n"
     )
     while True:
-        r = input("Elige la red [1-9]: ").strip()
-        if r in {"1", "2", "3", "4", "5", "6", "7", "8", "9"}:
-            red = {
-                "1": "cuadrada",
-                "2": "triangular",
-                "3": "cubica",
-                "4": "bcc",
-                "5": "fcc",
-                "6": "fe_mp13",
-                "7": "ni_mp23",
-                "8": "co_mp102",
-                "9": "todas",
-            }[r]
+        m = input("Elige el modelo [1/2]: ").strip()
+        if m in {"1", "2"}:
+            modelo = "ising" if m == "1" else "heisenberg"
+            break
+        print("Opción no válida.")
+
+    if modelo == "ising":
+        print(
+            "\nRed:\n"
+            "  1) Cuadrada      (2D)\n"
+            "  2) Triangular    (2D)\n"
+            "  3) Cúbica simple (SC)\n"
+            "  4) BCC\n"
+            "  5) FCC\n"
+            "  6) Fe mp-13      (BCC, Materials Project)\n"
+            "  7) Ni mp-23      (FCC, Materials Project)\n"
+            "  8) Co mp-102     (FCC, Materials Project)\n"
+            "  9) Todas\n"
+        )
+        mapa = {
+            "1": "cuadrada",
+            "2": "triangular",
+            "3": "cubica",
+            "4": "bcc",
+            "5": "fcc",
+            "6": "fe_mp13",
+            "7": "ni_mp23",
+            "8": "co_mp102",
+            "9": "todas",
+        }
+    else:
+        print(
+            "\nRed (bulk 3D):\n"
+            "  1) Cúbica simple (SC)\n"
+            "  2) BCC\n"
+            "  3) FCC\n"
+            "  4) Fe mp-13  (BCC, Materials Project)\n"
+            "  5) Ni mp-23  (FCC, Materials Project)\n"
+            "  6) Co mp-102 (FCC, Materials Project)\n"
+            "  7) Todos los materiales MP\n"
+        )
+        mapa = {
+            "1": "cubica",
+            "2": "bcc",
+            "3": "fcc",
+            "4": "fe_mp13",
+            "5": "ni_mp23",
+            "6": "co_mp102",
+            "7": "materiales",
+        }
+
+    while True:
+        r = input(f"Elige la red [{'/'.join(mapa)}]: ").strip()
+        if r in mapa:
+            red = mapa[r]
+            break
+        print("Opción no válida.")
+
+    print(
+        "\nInicialización de espines:\n"
+        "  1) Aleatoria\n"
+        "  2) Ferromagnética\n"
+        "  3) Antiferromagnética\n"
+    )
+    while True:
+        i = input("Elige inicialización [1/2/3]: ").strip()
+        if i in {"1", "2", "3"}:
+            inicializacion = {
+                "1": "aleatorio",
+                "2": "ferromagnetico",
+                "3": "antiferromagnetico",
+            }[i]
             break
         print("Opción no válida.")
 
     print(
         "\nAnálisis:\n"
-        "  1) Temperatura fija          →  .../temperatura_fija/\n"
-        "  2) Magnetización vs T (y Tc) →  .../magnetizacion_vs_t/\n"
-        "  3) Comparación Tc vs tamaño  →  .../tc_vs_tamano/\n"
-        "  4) T fija + magnetización vs T\n"
+        "  1) Temperatura fija\n"
+        "  2) Magnetización vs T (y Tc)\n"
+        "  3) Tc vs tamaño / caja mínima (+ calibración J en Heisenberg)\n"
+        "  4) Pipeline completo\n"
     )
     while True:
-        m = input("Elige el análisis [1/2/3/4]: ").strip()
-        if m in {"1", "2", "3", "4"}:
-            modo = {
-                "1": "actual",
-                "2": "temperatura",
-                "3": "tamano",
-                "4": "todo",
-            }[m]
+        a = input("Elige el análisis [1/2/3/4]: ").strip()
+        if a in {"1", "2", "3", "4"}:
+            modo = {"1": "actual", "2": "temperatura", "3": "tamano", "4": "todo"}[a]
             break
         print("Opción no válida.")
 
-    return red, modo
+    return modelo, red, modo, inicializacion
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Ising Metropolis 2D/3D e Ising sobre estructuras Materials Project.",
+        description=(
+            "Metropolis: Ising (±1) o Heisenberg clásico (vectores unitarios). "
+            "Resultados en resultados/<modelo>/<geometria>/..."
+        ),
     )
+    parser.add_argument("--modelo", choices=MODELOS, default=None)
     parser.add_argument(
         "--red",
-        choices=(*REDES, "ambas", "todas"),
+        choices=(*REDES, "ambas", "todas", "materiales"),
         default=None,
-        help="Geometría de la red o todas.",
     )
     parser.add_argument(
         "--modo",
         choices=("actual", "temperatura", "tamano", "todo"),
         default=None,
-        help="actual = T fija; temperatura = |m|(T); tamano = Tc vs L; todo = T fija + |m|(T).",
+    )
+    parser.add_argument(
+        "--init",
+        choices=INICIALIZACIONES,
+        default=None,
+        help="Estado inicial de los espines.",
     )
     return parser.parse_args(argv)
 
 
-def _geometrias(red: str) -> tuple[str, ...]:
+def _geometrias(red: str, modelo: str) -> tuple[str, ...]:
     if red in {"ambas", "todas"}:
-        return GEOMETRIAS
+        return GEOMETRIAS if modelo == "ising" else GEOMETRIAS_HEISENBERG
+    if red == "materiales":
+        return tuple(MATERIALES_MP.keys())
+    if modelo == "heisenberg" and red not in GEOMETRIAS_HEISENBERG:
+        raise ValueError(
+            f"Heisenberg solo admite {GEOMETRIAS_HEISENBERG}, recibido {red!r}"
+        )
     return (red,)
 
 
-def _ejecutar(geometria: str, modo: str) -> None:
+def _ejecutar_ising(geometria: str, modo: str) -> None:
+    etiqueta = (
+        etiqueta_estructura(geometria)
+        if geometria in MATERIALES_MP
+        else etiqueta_red(geometria)
+    )
     print(f"\n{'=' * 60}")
-    print(f"  {etiqueta_red(geometria)}")
+    print(f"  Ising — {etiqueta}")
     print(f"{'=' * 60}")
 
     if modo in ("actual", "todo"):
@@ -117,23 +193,42 @@ def _ejecutar(geometria: str, modo: str) -> None:
         ejecutar_tc_vs_tamano(geometria)
 
 
+def _ejecutar_heisenberg(geometria: str, modo: str, inicializacion: str) -> None:
+    etiqueta = etiqueta_estructura(geometria)
+    print(f"\n{'=' * 60}")
+    print(f"  Heisenberg clásico — {etiqueta}")
+    print(f"  init={inicializacion} | kB en eV/K | T en K (≥0.1)")
+    print(f"{'=' * 60}")
+    ejecutar_heisenberg_completo(
+        geometria, inicializacion=inicializacion, modo=modo
+    )
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    if args.red is None or args.modo is None:
-        red, modo = _menu_interactivo()
+    if args.modelo is None or args.red is None or args.modo is None:
+        modelo, red, modo, inicializacion = _menu_interactivo()
+        if args.modelo is not None:
+            modelo = args.modelo
         if args.red is not None:
             red = args.red
         if args.modo is not None:
             modo = args.modo
+        if args.init is not None:
+            inicializacion = args.init
     else:
-        red, modo = args.red, args.modo
+        modelo, red, modo = args.modelo, args.red, args.modo
+        inicializacion = args.init or "ferromagnetico"
 
-    preparar_carpetas(RESULTADOS)
+    preparar_carpetas(RESULTADOS, RESULTADOS / "ising", RESULTADOS / "heisenberg")
 
-    for geometria in _geometrias(red):
-        _ejecutar(geometria, modo)
+    for geometria in _geometrias(red, modelo):
+        if modelo == "ising":
+            _ejecutar_ising(geometria, modo)
+        else:
+            _ejecutar_heisenberg(geometria, modo, inicializacion)
 
-    print(f"\nResultados en: {RESULTADOS}")
+    print(f"\nResultados en: {RESULTADOS}/<ising|heisenberg>/<geometria>/...")
 
 
 if __name__ == "__main__":

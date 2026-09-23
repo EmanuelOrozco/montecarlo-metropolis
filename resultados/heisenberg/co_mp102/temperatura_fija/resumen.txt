@@ -1,0 +1,9 @@
+modelo: Heisenberg clásico
+estructura: Co (mp-102, FCC, z=12, a=3.513 Å)
+inicializacion: ferromagnetico
+L: 8
+J_eV: 0.03453171328302188
+T_K: 418.2
+kB_eV_per_K: 8.617333262145e-05
+E_final/N: -0.17215484566928496
+|m|_final: 0.8825510834247298

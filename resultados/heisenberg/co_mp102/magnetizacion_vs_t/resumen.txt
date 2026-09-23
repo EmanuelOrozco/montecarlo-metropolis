@@ -1,0 +1,9 @@
+modelo: Heisenberg clásico
+estructura: Co (mp-102, FCC, z=12, a=3.513 Å)
+inicializacion: ferromagnetico
+L_optimo: 8
+J_eV: 0.03453171328302188
+Tc_estimada_K: 1232.473928535212
+Tc_experimental_K: 1394.0
+T_min_K: 0.1
+kB_eV_per_K: 8.617333262145e-05

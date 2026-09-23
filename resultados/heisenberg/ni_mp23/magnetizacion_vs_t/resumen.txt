@@ -1,0 +1,9 @@
+modelo: Heisenberg clásico
+estructura: Ni (mp-23, FCC, z=12, a=3.475 Å)
+inicializacion: ferromagnetico
+L_optimo: 8
+J_eV: 0.0156309261704353
+Tc_estimada_K: 583.8474693470362
+Tc_experimental_K: 631.0
+T_min_K: 0.1
+kB_eV_per_K: 8.617333262145e-05

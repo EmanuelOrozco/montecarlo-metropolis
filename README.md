@@ -1,4 +1,51 @@
-# Modelo de Ising 2D/3D con Monte Carlo Metropolis
+# Monte Carlo Metropolis: Ising y Heisenberg clásico
+
+Simulación de espines en redes 2D/3D y estructuras de Materials Project
+con el algoritmo de **Metropolis**, en dos modelos:
+
+- **Ising** — espines \(\pm 1\), unidades reducidas (\(k_B=1\)).
+- **Heisenberg clásico** — espines **vectores unitarios**, \(k_B\) en **eV/K**,
+  temperatura en **kelvin** (\(T \ge 0.1\,\mathrm{K}\)), sistemas **bulk** con PBC.
+
+Los resultados se separan por modelo:
+
+```
+resultados/
+  ising/<geometria>/{temperatura_fija,magnetizacion_vs_t,tc_vs_tamano}/
+  heisenberg/<geometria>/{calibracion_j_caja,temperatura_fija,magnetizacion_vs_t}/
+```
+
+## Ejecución rápida
+
+```bash
+# Ising (rutas bajo resultados/ising/)
+python run_simulation.py --modelo ising --red fe_mp13 --modo temperatura
+
+# Heisenberg: valida MP, busca caja mínima, calibra J y barre T
+python run_simulation.py --modelo heisenberg --red fe_mp13 --modo todo --init ferromagnetico
+python run_simulation.py --modelo heisenberg --red ni_mp23 --modo todo --init aleatorio
+python run_simulation.py --modelo heisenberg --red co_mp102 --modo todo --init ferromagnetico
+```
+
+| Flag | Valores |
+| --- | --- |
+| `--modelo` | `ising`, `heisenberg` |
+| `--red` | redes 2D/3D / MP (`fe_mp13`, `ni_mp23`, `co_mp102`) / `todas` / `materiales` |
+| `--modo` | `actual`, `temperatura`, `tamano`, `todo` |
+| `--init` | `aleatorio`, `ferromagnetico`, `antiferromagnetico` |
+
+### Heisenberg: caja mínima y J
+
+1. Se valida la estructura MP (BCC/FCC, z, simetría) y se muestra en títulos.
+2. Se barre \(L=2,4,\ldots\) hasta que \(T_c^\star\) se estabiliza (\(\Delta T_c/T_c \le 1\%\)).
+3. Se calibra \(J = k_B T_C^\mathrm{exp} / T_c^\star\) (eV) para reproducir la Curie experimental.
+4. El barrido físico usa \(T\) desde **0.1 K**.
+
+Espines aleatorios: muestreo gaussiano 3D normalizado (uniforme en la esfera, sin sesgo).
+
+---
+
+# Modelo de Ising (detalle)
 
 Simulación del modelo de Ising en redes **cuadrada 2D**, **triangular 2D**,
 **cúbica simple (SC)**, **cúbica centrada en el cuerpo (BCC)**, **cúbica

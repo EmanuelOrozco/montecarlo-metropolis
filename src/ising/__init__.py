@@ -13,6 +13,8 @@ from .cuadrada import IsingCuadrada
 from .material import IsingCoMP102, IsingFeMP13, IsingNiMP23
 from .topologia_cubica import especificacion_cubica
 from .topologia_material import especificacion_material
+from ..materials.estructura import etiqueta_estructura
+from ..materials.mp_client import MATERIALES_MP
 from .triangular import IsingTriangular
 
 REDES = ("cuadrada", "triangular", "cubica", "bcc", "fcc", "fe_mp13", "ni_mp23", "co_mp102")
@@ -69,8 +71,8 @@ def tc_teorica(geometria: str, J: float = 1.0, kB: float = 1.0) -> float:
 
 
 def etiqueta_red(geometria: str) -> str:
-    if geometria in MATERIALES:
-        return especificacion_material(geometria).nombre
+    if geometria in MATERIALES_MP:
+        return etiqueta_estructura(geometria)
     return {
         "cuadrada": "Red cuadrada (2D, 4 vecinos)",
         "triangular": "Red triangular (2D, 6 vecinos)",

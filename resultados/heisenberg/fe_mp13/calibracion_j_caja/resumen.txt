@@ -1,0 +1,10 @@
+modelo: Heisenberg clásico (Metropolis, bulk PBC)
+estructura: Fe (mp-13, BCC, z=8, a=2.863 Å)
+inicializacion: ferromagnetico
+kB_eV_per_K: 8.617333262145e-05
+L_optimo: 8
+N_optimo: 1024
+Tc_estrella: 2.1466666666666665
+J_eV: 0.041868999654117556
+Tc_exp_K: 1043.0
+Tc_sim_K: 1043.0

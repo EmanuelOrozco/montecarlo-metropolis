@@ -1,0 +1,10 @@
+modelo: Heisenberg clásico (Metropolis, bulk PBC)
+estructura: Ni (mp-23, FCC, z=12, a=3.475 Å)
+inicializacion: ferromagnetico
+kB_eV_per_K: 8.617333262145e-05
+L_optimo: 8
+N_optimo: 2048
+Tc_estrella: 3.4787044792637944
+J_eV: 0.0156309261704353
+Tc_exp_K: 631.0
+Tc_sim_K: 631.0
