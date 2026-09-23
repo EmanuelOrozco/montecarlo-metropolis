@@ -10,10 +10,13 @@ from .base import IsingBase
 from .cubica import IsingCubica
 from .cubicas_centradas import IsingBCC, IsingFCC
 from .cuadrada import IsingCuadrada
+from .material import IsingCoMP102, IsingFeMP13, IsingNiMP23
 from .topologia_cubica import especificacion_cubica
+from .topologia_material import especificacion_material
 from .triangular import IsingTriangular
 
-REDES = ("cuadrada", "triangular", "cubica", "bcc", "fcc")
+REDES = ("cuadrada", "triangular", "cubica", "bcc", "fcc", "fe_mp13", "ni_mp23", "co_mp102")
+MATERIALES = ("fe_mp13", "ni_mp23", "co_mp102")
 
 # Alias histórico.
 Ising2D = IsingCuadrada
@@ -24,6 +27,9 @@ _CLASES: dict[str, Type[IsingBase]] = {
     "cubica": IsingCubica,
     "bcc": IsingBCC,
     "fcc": IsingFCC,
+    "fe_mp13": IsingFeMP13,
+    "ni_mp23": IsingNiMP23,
+    "co_mp102": IsingCoMP102,
 }
 
 
@@ -57,10 +63,14 @@ def tc_teorica(geometria: str, J: float = 1.0, kB: float = 1.0) -> float:
     if geometria in {"cubica", "bcc", "fcc"}:
         # En 3D se usan estimaciones numéricas aceptadas, no soluciones exactas.
         return especificacion_cubica(geometria).tc_referencia * J / kB
+    if geometria in MATERIALES:
+        return especificacion_material(geometria).tc_referencia * J / kB
     raise ValueError(f"geometria desconocida: {geometria!r}")
 
 
 def etiqueta_red(geometria: str) -> str:
+    if geometria in MATERIALES:
+        return especificacion_material(geometria).nombre
     return {
         "cuadrada": "Red cuadrada (2D, 4 vecinos)",
         "triangular": "Red triangular (2D, 6 vecinos)",
@@ -77,8 +87,12 @@ __all__ = [
     "IsingCubica",
     "IsingBCC",
     "IsingFCC",
+    "IsingFeMP13",
+    "IsingNiMP23",
+    "IsingCoMP102",
     "Ising2D",
     "REDES",
+    "MATERIALES",
     "clase_ising",
     "crear_ising",
     "dimension_red",

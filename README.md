@@ -1,8 +1,9 @@
 # Modelo de Ising 2D/3D con Monte Carlo Metropolis
 
 Simulación del modelo de Ising en redes **cuadrada 2D**, **triangular 2D**,
-**cúbica simple (SC)**, **cúbica centrada en el cuerpo (BCC)** y **cúbica
-centrada en las caras (FCC)** mediante el algoritmo de Metropolis.
+**cúbica simple (SC)**, **cúbica centrada en el cuerpo (BCC)**, **cúbica
+centrada en las caras (FCC)** y **Fe (mp-13)**, **Ni (mp-23)** y **Co (mp-102)** de Materials Project mediante
+el algoritmo de Metropolis.
 
 1. **Temperatura fija** — tres configuraciones iniciales, gráficas \(E/N\) y \(m/N\) vs MCS, video de la red.
 2. **Magnetización vs temperatura** — barrido de \(T\), estimación de \(T_c\) y video hasta el régimen crítico.
@@ -28,13 +29,16 @@ python run_simulation.py --red cubica --modo actual
 python run_simulation.py --red cubica --modo temperatura
 python run_simulation.py --red bcc --modo tamano
 python run_simulation.py --red fcc --modo actual
+python run_simulation.py --red fe_mp13 --modo temperatura
+python run_simulation.py --red ni_mp23 --modo actual
+python run_simulation.py --red co_mp102 --modo temperatura
 python run_simulation.py --red cuadrada --modo tamano
 python run_simulation.py --red todas --modo todo
 ```
 
 | Flag | Valores |
 | --- | --- |
-| `--red` | `cuadrada`, `triangular`, `cubica`, `bcc`, `fcc`, `todas` |
+| `--red` | `cuadrada`, `triangular`, `cubica`, `bcc`, `fcc`, `fe_mp13`, `ni_mp23`, `co_mp102`, `todas` |
 | `--modo` | `actual` (T fija), `temperatura` (\(\|m\|(T)\)), `tamano` (\(T_c\) vs \(L\)), `todo` |
 
 ## Estructura
@@ -94,6 +98,23 @@ Las pruebas se ejecutan con:
 python -m unittest discover -v
 ```
 
+
+## Materials Project (Fe, Ni, Co)
+
+Geometrías descargadas de Materials Project (celda convencional, cache en `data/`):
+
+| Clave | MP ID | Elemento | Red | Sitios/celda | z | a (Å) |
+| --- | --- | --- | --- | --- | --- | --- |
+| `fe_mp13` | [mp-13](https://next-gen.materialsproject.org/materials/mp-13) | Fe | BCC Im-3m | 2 | 8 | ≈ 2.863 |
+| `ni_mp23` | [mp-23](https://next-gen.materialsproject.org/materials/mp-23) | Ni | FCC Fm-3m | 4 | 12 | ≈ 3.475 |
+| `co_mp102` | [mp-102](https://next-gen.materialsproject.org/materials/mp-102) | Co | FCC Fm-3m | 4 | 12 | ≈ 3.513 |
+
+1. Copia `.env.example` → `.env` y define `MP_API_KEY` (el archivo `.env` no se versiona).
+2. Si el JSON local falta, el cliente descarga la estructura con `mp-api`.
+3. Las Tc de referencia del Ising (J=1) son las del BCC/FCC numérico; no son las Curie experimentales.
+
+Dependencias extra: `mp-api`, `python-dotenv`.
+
 ## Temperaturas críticas (teoría, \(h=0\), \(J=k_B=1\))
 
 | Red | Dimensión | \(T_c\) de referencia |
@@ -103,6 +124,7 @@ python -m unittest discover -v
 | Cúbica simple | 3D | \(4.511524\), estimación numérica |
 | BCC | 3D | \(6.3558\), estimación numérica |
 | FCC | 3D | \(9.794\), estimación numérica |
+| Fe (mp-13, BCC) | 3D | \(6.3558\), estimación numérica BCC |
 
 Las dos referencias 2D son exactas. Los modelos 3D no tienen solución
 analítica exacta conocida, por lo que se comparan con valores numéricos

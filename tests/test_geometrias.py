@@ -16,6 +16,9 @@ class TestGeometriasIsing(unittest.TestCase):
             ("cubica", 3, 1, 6, -3.0),
             ("bcc", 3, 2, 8, -4.0),
             ("fcc", 3, 4, 12, -6.0),
+            ("fe_mp13", 3, 2, 8, -4.0),
+            ("ni_mp23", 3, 4, 12, -6.0),
+            ("co_mp102", 3, 4, 12, -6.0),
         )
         for geometria, dimension, sitios, vecinos, energia in casos:
             with self.subTest(geometria=geometria):
@@ -55,6 +58,9 @@ class TestGeometriasIsing(unittest.TestCase):
         self.assertAlmostEqual(tc_teorica("cubica"), 4.511524)
         self.assertAlmostEqual(tc_teorica("bcc"), 6.3558)
         self.assertAlmostEqual(tc_teorica("fcc"), 9.794)
+        self.assertAlmostEqual(tc_teorica("fe_mp13"), 6.3558)
+        self.assertAlmostEqual(tc_teorica("ni_mp23"), 9.794)
+        self.assertAlmostEqual(tc_teorica("co_mp102"), 9.794)
 
     def test_tabla_vecinos_cubica_para_comparacion_tc(self) -> None:
         vecinos = tabla_vecinos("cubica", 4)
@@ -64,6 +70,9 @@ class TestGeometriasIsing(unittest.TestCase):
     def test_topologias_cubicas_centradas(self) -> None:
         self.assertEqual(tabla_vecinos("bcc", 4).shape, (2 * 4**3, 8))
         self.assertEqual(tabla_vecinos("fcc", 4).shape, (4 * 4**3, 12))
+        self.assertEqual(tabla_vecinos("fe_mp13", 4).shape, (2 * 4**3, 8))
+        self.assertEqual(tabla_vecinos("ni_mp23", 4).shape, (4 * 4**3, 12))
+        self.assertEqual(tabla_vecinos("co_mp102", 4).shape, (4 * 4**3, 12))
 
         bcc = crear_ising(
             "bcc",

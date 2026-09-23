@@ -21,6 +21,8 @@ from .config import (
 )
 from .ising import IsingBase
 from .ising.topologia_cubica import coordenadas_cubicas, especificacion_cubica
+from .ising.topologia_material import coordenadas_material, especificacion_material
+from .materials.mp_client import MATERIALES_MP
 
 
 def _cmap_espines() -> ListedColormap:
@@ -197,6 +199,18 @@ def _tamano_marcador(L: int, panel_ancho: float = 4.0) -> float:
     return max(12.0, 1800.0 * panel_ancho / (L * L))
 
 
+def _coords_3d(geometria: str, L: int) -> tuple:
+    if geometria in MATERIALES_MP:
+        return coordenadas_material(geometria, L)
+    return coordenadas_cubicas(geometria, L)
+
+
+def _sitios_por_celda_3d(geometria: str) -> int:
+    if geometria in MATERIALES_MP:
+        return especificacion_material(geometria).sitios_por_celda
+    return especificacion_cubica(geometria).sitios_por_celda
+
+
 def _configurar_eje_cubico(ax, L: int, azimut: float = VISTA_3D_AZIMUT) -> None:
     """Configura una cámara isométrica y escalas iguales para la red 3D."""
     limite = (-0.6, L - 0.4)
@@ -249,7 +263,7 @@ def _dibujar_red(ax, spins: np.ndarray, geometria: str = "cuadrada"):
     """Dibuja todos los sitios de la red en su dimensión física."""
     if geometria in GEOMETRIAS_3D:
         L = spins.shape[0]
-        x, y, z = coordenadas_cubicas(geometria, L)
+        x, y, z = _coords_3d(geometria, L)
         sc = ax.scatter(
             x,
             y,
@@ -617,7 +631,7 @@ class GrabadorVideoTemperatura:
 
         # Placeholder inicial; se reemplaza en el primer agregar_paso.
         if geometria in GEOMETRIAS_3D:
-            q = especificacion_cubica(geometria).sitios_por_celda
+            q = _sitios_por_celda_3d(geometria)
             forma_placeholder = (2, 2, 2) if q == 1 else (2, 2, 2, q)
         else:
             forma_placeholder = (2, 2)

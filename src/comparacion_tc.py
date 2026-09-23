@@ -40,6 +40,8 @@ from .config import (
 )
 from .ising import dimension_red, etiqueta_red, tc_teorica
 from .ising.topologia_cubica import tabla_vecinos_cubica
+from .ising.topologia_material import tabla_vecinos_material
+from .materials.mp_client import MATERIALES_MP
 
 _VECINOS_CUADRADA = ((-1, 0), (1, 0), (0, -1), (0, 1))
 _VECINOS_TRIANGULAR = (
@@ -102,6 +104,8 @@ def tamanos_celda(
 @lru_cache(maxsize=32)
 def tabla_vecinos(geometria: str, L: int) -> np.ndarray:
     """Flyweight: índices de vecinos con PBC, forma (N, z)."""
+    if geometria in MATERIALES_MP:
+        return tabla_vecinos_material(geometria, L)
     if geometria in {"bcc", "fcc"}:
         return tabla_vecinos_cubica(geometria, L)
     try:

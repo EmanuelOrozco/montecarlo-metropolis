@@ -24,7 +24,7 @@ RESULTADOS = ROOT / "resultados"
 
 # Geometrías disponibles: dos redes 2D y una red 3D.
 GEOMETRIAS_2D = ("cuadrada", "triangular")
-GEOMETRIAS_3D = ("cubica", "bcc", "fcc")
+GEOMETRIAS_3D = ("cubica", "bcc", "fcc", "fe_mp13", "ni_mp23", "co_mp102")
 GEOMETRIAS = (*GEOMETRIAS_2D, *GEOMETRIAS_3D)
 
 # Barrido de temperatura (|m|(T) y Tc).
@@ -33,6 +33,9 @@ T_MAX = 5.0
 T_MAX_CUBICA = 7.0
 T_MAX_BCC = 9.0
 T_MAX_FCC = 13.0
+T_MAX_FE_MP13 = 9.0  # Fe mp-13 es BCC
+T_MAX_NI_MP23 = 13.0  # Ni mp-23 es FCC
+T_MAX_CO_MP102 = 13.0  # Co mp-102 es FCC
 N_TEMPERATURAS = 55
 MCS_T = 800
 # Se descartan los primeros MCS (termalización) y el promedio se toma del resto.
@@ -86,12 +89,15 @@ def t_max_geometria(geometria: str) -> float:
         "cubica": T_MAX_CUBICA,
         "bcc": T_MAX_BCC,
         "fcc": T_MAX_FCC,
+        "fe_mp13": T_MAX_FE_MP13,
+        "ni_mp23": T_MAX_NI_MP23,
+        "co_mp102": T_MAX_CO_MP102,
     }.get(geometria, T_MAX)
 
 
 def l_max_comparacion(geometria: str) -> int:
     """Límite seguro del barrido de tamaño según la dimensión."""
-    if geometria in {"bcc", "fcc"}:
+    if geometria in {"bcc", "fcc", "fe_mp13", "ni_mp23", "co_mp102"}:
         return L_MAX_COMP_CENTRADAS
     return L_MAX_COMP_CUBICA if geometria == "cubica" else L_MAX_COMP
 

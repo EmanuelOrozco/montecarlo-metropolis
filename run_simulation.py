@@ -30,18 +30,24 @@ def _menu_interactivo() -> tuple[str, str]:
         "  3) Cúbica simple (3D, 6 vecinos)\n"
         "  4) Cúbica BCC    (3D, 8 vecinos)\n"
         "  5) Cúbica FCC    (3D, 12 vecinos)\n"
-        "  6) Todas las redes\n"
+        "  6) Fe mp-13      (BCC, Materials Project)\n"
+        "  7) Ni mp-23      (FCC, Materials Project)\n"
+        "  8) Co mp-102     (FCC, Materials Project)\n"
+        "  9) Todas las redes\n"
     )
     while True:
-        r = input("Elige la red [1/2/3/4/5/6]: ").strip()
-        if r in {"1", "2", "3", "4", "5", "6"}:
+        r = input("Elige la red [1-9]: ").strip()
+        if r in {"1", "2", "3", "4", "5", "6", "7", "8", "9"}:
             red = {
                 "1": "cuadrada",
                 "2": "triangular",
                 "3": "cubica",
                 "4": "bcc",
                 "5": "fcc",
-                "6": "todas",
+                "6": "fe_mp13",
+                "7": "ni_mp23",
+                "8": "co_mp102",
+                "9": "todas",
             }[r]
             break
         print("Opción no válida.")
@@ -70,7 +76,7 @@ def _menu_interactivo() -> tuple[str, str]:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Ising Metropolis en redes 2D y cúbicas 3D (SC/BCC/FCC).",
+        description="Ising Metropolis 2D/3D e Ising sobre estructuras Materials Project.",
     )
     parser.add_argument(
         "--red",
